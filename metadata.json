@@ -1,0 +1,5 @@
+{
+  "name": "HexaScale: Smart H3 Spatial Converter",
+  "description": "An advanced geospatial tool to convert polygons, lines, and points into H3 hexagons with AI-assisted attribute interpolation (intensive vs. extensive) and aggregation.",
+  "requestFramePermissions": []
+}
