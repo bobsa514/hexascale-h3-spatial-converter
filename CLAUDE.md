@@ -42,6 +42,10 @@ assets/
 tests/
   geoProcessor.test.ts     # Core processing tests
   columnInference.test.ts  # Classification accuracy + false positive regression
+  colorScale.test.ts       # Color gradient and numeric column detection
+  projectConfig.test.ts    # Config serialization/deserialization
+  errorMessages.test.ts    # Error message mapping
+  errors.test.ts           # AppError and ProcessingWarnings
   fixtures/                # Small GeoJSON test data
 ```
 
