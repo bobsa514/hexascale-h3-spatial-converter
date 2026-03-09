@@ -4,7 +4,7 @@ Convert geospatial data into H3 hexagonal grids — entirely in your browser.
 
 HexaScale takes polygons, points, and lines from standard geospatial formats and converts them into Uber's [H3 hexagonal grid system](https://h3geo.org/), correctly handling the difference between intensive variables (density, rate, temperature) and extensive variables (population, count, area).
 
-**[Try the live demo](https://hexascale.vercel.app/)**
+**[Try the live demo](https://hexascale.boyangsa.com/)**
 
 ## Why HexaScale?
 
@@ -37,7 +37,7 @@ npm run dev
 
 Open http://localhost:3000. Upload a file, configure your columns, and process.
 
-Or use the [live version](https://hexascale.vercel.app/) — no install needed.
+Or use the [live version](https://hexascale.boyangsa.com/) — no install needed.
 
 ## How It Works
 
