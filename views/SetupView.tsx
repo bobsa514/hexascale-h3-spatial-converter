@@ -24,6 +24,7 @@ interface Props {
   onSaveConfig: () => void;
   onLoadConfig: () => void;
   allOutputNames: string[];
+  onQuickDemo?: () => void;
 }
 
 export const SetupView: React.FC<Props> = ({
@@ -40,6 +41,7 @@ export const SetupView: React.FC<Props> = ({
   onSaveConfig,
   onLoadConfig,
   allOutputNames,
+  onQuickDemo,
 }) => {
   const [previewLayer, setPreviewLayer] = useState<Layer | null>(null);
 
@@ -55,7 +57,7 @@ export const SetupView: React.FC<Props> = ({
   return (
     <div className="max-w-4xl mx-auto animate-in slide-in-from-bottom-4 duration-500">
       {/* Onboarding */}
-      {layers.length === 0 && <OnboardingBanner onLoadSample={onDataLoaded} />}
+      {layers.length === 0 && <OnboardingBanner onLoadSample={onDataLoaded} onQuickDemo={onQuickDemo} />}
 
       {/* 1. Global Settings */}
       <div className="mb-8 p-6 bg-gray-900/50 rounded-2xl border border-gray-800 shadow-xl">
@@ -146,7 +148,7 @@ export const SetupView: React.FC<Props> = ({
                         {layer.geoType}
                       </span>
                       {layerHasDupes && (
-                        <AlertCircle className="w-3.5 h-3.5 text-orange-400" title="Has duplicate output names" />
+                        <span title="Has duplicate output names"><AlertCircle className="w-3.5 h-3.5 text-orange-400" /></span>
                       )}
                     </div>
                     <div className="text-sm mt-0.5 flex items-center gap-2">

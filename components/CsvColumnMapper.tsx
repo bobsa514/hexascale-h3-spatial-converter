@@ -16,10 +16,10 @@ export const CsvColumnMapper: React.FC<Props> = ({ columns, onConfirm, onCancel 
     const lowerCols = columns.map(c => c.toLowerCase());
     
     const latIndex = lowerCols.findIndex(c => ['lat', 'latitude', 'y', 'lat_dd'].includes(c));
-    if (latIndex >= 0) setLatCol(columns[latIndex]);
+    if (latIndex >= 0 && columns[latIndex]) setLatCol(columns[latIndex]);
 
     const lonIndex = lowerCols.findIndex(c => ['lon', 'lng', 'longitude', 'x', 'long', 'lon_dd'].includes(c));
-    if (lonIndex >= 0) setLonCol(columns[lonIndex]);
+    if (lonIndex >= 0 && columns[lonIndex]) setLonCol(columns[lonIndex]);
   }, [columns]);
 
   const handleConfirm = () => {

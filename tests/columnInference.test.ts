@@ -62,7 +62,7 @@ describe('analyzeColumnsLocally — false positive regression', () => {
       [{ name: 'treatment', sample: 'A' }],
       GeoType.POLYGON
     );
-    expect(results[0].type).not.toBe(ColumnType.INTENSIVE);
+    expect(results[0]!.type).not.toBe(ColumnType.INTENSIVE);
   });
 
   it('"county_id" IS classified as ID', async () => {
@@ -70,7 +70,7 @@ describe('analyzeColumnsLocally — false positive regression', () => {
       [{ name: 'county_id', sample: '06037' }],
       GeoType.POLYGON
     );
-    expect(results[0].type).toBe(ColumnType.ID);
+    expect(results[0]!.type).toBe(ColumnType.ID);
   });
 
   it('"population" IS classified as extensive', async () => {
@@ -78,7 +78,7 @@ describe('analyzeColumnsLocally — false positive regression', () => {
       [{ name: 'population', sample: 50000 }],
       GeoType.POLYGON
     );
-    expect(results[0].type).toBe(ColumnType.EXTENSIVE);
+    expect(results[0]!.type).toBe(ColumnType.EXTENSIVE);
   });
 
   it('"avg_temperature" IS classified as intensive', async () => {
@@ -86,7 +86,7 @@ describe('analyzeColumnsLocally — false positive regression', () => {
       [{ name: 'avg_temperature', sample: 72.5 }],
       GeoType.POLYGON
     );
-    expect(results[0].type).toBe(ColumnType.INTENSIVE);
+    expect(results[0]!.type).toBe(ColumnType.INTENSIVE);
   });
 
   it('"density" IS classified as intensive', async () => {
@@ -94,7 +94,7 @@ describe('analyzeColumnsLocally — false positive regression', () => {
       [{ name: 'density', sample: 1200 }],
       GeoType.POLYGON
     );
-    expect(results[0].type).toBe(ColumnType.INTENSIVE);
+    expect(results[0]!.type).toBe(ColumnType.INTENSIVE);
   });
 
   it('"per_capita_income" IS classified as intensive (per_ substring)', async () => {
@@ -102,7 +102,7 @@ describe('analyzeColumnsLocally — false positive regression', () => {
       [{ name: 'per_capita_income', sample: 42000 }],
       GeoType.POLYGON
     );
-    expect(results[0].type).toBe(ColumnType.INTENSIVE);
+    expect(results[0]!.type).toBe(ColumnType.INTENSIVE);
   });
 
   it('"total_count" IS classified as extensive', async () => {
@@ -110,7 +110,7 @@ describe('analyzeColumnsLocally — false positive regression', () => {
       [{ name: 'total_count', sample: 1500 }],
       GeoType.POLYGON
     );
-    expect(results[0].type).toBe(ColumnType.EXTENSIVE);
+    expect(results[0]!.type).toBe(ColumnType.EXTENSIVE);
   });
 });
 
@@ -120,7 +120,7 @@ describe('analyzeColumnsLocally — point overrides', () => {
       [{ name: 'price', sample: 100 }],
       GeoType.POINT
     );
-    expect(results[0].type).toBe(ColumnType.EXTENSIVE);
+    expect(results[0]!.type).toBe(ColumnType.EXTENSIVE);
   });
 });
 
@@ -130,7 +130,7 @@ describe('analyzeColumnsLocally — point aggregation', () => {
       [{ name: 'min_temp', sample: 32 }],
       GeoType.POLYGON
     );
-    expect(results[0].pointAggregation).toBe(PointAggregation.MIN);
+    expect(results[0]!.pointAggregation).toBe(PointAggregation.MIN);
   });
 
   it('"max_speed" gets MAX aggregation', async () => {
@@ -138,7 +138,7 @@ describe('analyzeColumnsLocally — point aggregation', () => {
       [{ name: 'max_speed', sample: 65 }],
       GeoType.POLYGON
     );
-    expect(results[0].pointAggregation).toBe(PointAggregation.MAX);
+    expect(results[0]!.pointAggregation).toBe(PointAggregation.MAX);
   });
 
   it('"avg_income" gets AVERAGE aggregation', async () => {
@@ -146,7 +146,7 @@ describe('analyzeColumnsLocally — point aggregation', () => {
       [{ name: 'avg_income', sample: 50000 }],
       GeoType.POLYGON
     );
-    expect(results[0].pointAggregation).toBe(PointAggregation.AVERAGE);
+    expect(results[0]!.pointAggregation).toBe(PointAggregation.AVERAGE);
   });
 
   it('"total_pop" gets SUM aggregation', async () => {
@@ -154,6 +154,6 @@ describe('analyzeColumnsLocally — point aggregation', () => {
       [{ name: 'total_pop', sample: 100000 }],
       GeoType.POLYGON
     );
-    expect(results[0].pointAggregation).toBe(PointAggregation.SUM);
+    expect(results[0]!.pointAggregation).toBe(PointAggregation.SUM);
   });
 });

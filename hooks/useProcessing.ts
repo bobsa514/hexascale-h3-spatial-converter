@@ -1,12 +1,66 @@
 import { useState, useCallback, useRef } from 'react';
 import { ProcessingStatus, HexResult, Layer } from '../types';
-import { processGeoJsonToH3, ProcessingResult } from '../services/geoProcessor';
 import { toUserMessage } from '../utils/errorMessages';
+import type { WorkerInMessage, WorkerOutMessage } from '../workers/workerTypes';
 
 export interface LayerProgress {
   name: string;
   status: 'pending' | 'processing' | 'done' | 'error';
   pct: number;
+}
+
+/** Process a single layer via a Web Worker, returning a promise */
+function processLayerInWorker(
+  layer: Layer,
+  h3Resolution: number,
+  onProgress: (processed: number, total: number) => void,
+  cancelledRef: React.RefObject<boolean>,
+  workerRef: React.RefObject<Worker | null>,
+): Promise<{ results: HexResult[]; warnings: string[] }> {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(
+      new URL('../workers/geoWorker.ts', import.meta.url),
+      { type: 'module' }
+    );
+    (workerRef as React.MutableRefObject<Worker | null>).current = worker;
+
+    worker.onmessage = (e: MessageEvent<WorkerOutMessage>) => {
+      if (cancelledRef.current) {
+        worker.terminate();
+        reject(new Error('Cancelled'));
+        return;
+      }
+
+      const { type, payload } = e.data;
+      if (type === 'PROGRESS') {
+        onProgress(payload.processed, payload.total);
+      } else if (type === 'RESULT') {
+        worker.terminate();
+        (workerRef as React.MutableRefObject<Worker | null>).current = null;
+        resolve(payload);
+      } else if (type === 'ERROR') {
+        worker.terminate();
+        (workerRef as React.MutableRefObject<Worker | null>).current = null;
+        reject(new Error(payload.message));
+      }
+    };
+
+    worker.onerror = (e) => {
+      worker.terminate();
+      (workerRef as React.MutableRefObject<Worker | null>).current = null;
+      reject(new Error(e.message || 'Worker error'));
+    };
+
+    const msg: WorkerInMessage = {
+      type: 'PROCESS',
+      payload: {
+        featureCollection: layer.data,
+        h3Resolution,
+        columns: layer.activeColumns,
+      },
+    };
+    worker.postMessage(msg);
+  });
 }
 
 export function useProcessing() {
@@ -68,21 +122,19 @@ export function useProcessing() {
       for (let i = 0; i < layers.length; i++) {
         if (cancelledRef.current) return false;
 
-        const layer = layers[i];
+        const layer = layers[i]!;
         setProgressText(`Processing layer ${i + 1}/${layers.length}: ${layer.fileName}...`);
 
         setLayerProgress(prev =>
           prev.map((lp, idx) => (idx === i ? { ...lp, status: 'processing' } : lp))
         );
 
-        await new Promise(r => setTimeout(r, 50));
-
         if (cancelledRef.current) return false;
 
-        const result: ProcessingResult = await processGeoJsonToH3(layer.data, {
+        const result = await processLayerInWorker(
+          layer,
           h3Resolution,
-          columns: layer.activeColumns,
-          onProgress: (processed, total) => {
+          (processed, total) => {
             const layerPct = total > 0 ? processed / total : 0;
             const overall = (i + layerPct) / layers.length;
             const pct = Math.min(99, Math.floor(overall * 100));
@@ -96,16 +148,18 @@ export function useProcessing() {
               )
             );
           },
-        });
+          cancelledRef,
+          workerRef,
+        );
 
         setProgressPct(Math.floor(((i + 1) / layers.length) * 100));
         setLayerProgress(prev =>
           prev.map((lp, idx) => (idx === i ? { ...lp, status: 'done', pct: 100 } : lp))
         );
 
-        if (result.warnings.hasWarnings()) {
+        if (result.warnings.length > 0) {
           allWarnings.push(
-            ...result.warnings.toSummary().map(w => `[${layer.fileName}] ${w}`)
+            ...result.warnings.map(w => `[${layer.fileName}] ${w}`)
           );
         }
 
@@ -122,6 +176,7 @@ export function useProcessing() {
       setProgressPct(100);
       return true;
     } catch (e: any) {
+      if (cancelledRef.current) return false;
       console.error(e);
       setError(toUserMessage(e));
       setStatus('error');

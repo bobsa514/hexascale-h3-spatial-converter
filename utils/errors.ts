@@ -20,7 +20,7 @@ export class ProcessingWarnings {
 
   add(message: string) {
     const idx = this.seen.get(message);
-    if (idx !== undefined) {
+    if (idx !== undefined && this.warnings[idx]) {
       this.warnings[idx].count++;
     } else {
       this.seen.set(message, this.warnings.length);

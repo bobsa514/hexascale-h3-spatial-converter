@@ -1,13 +1,14 @@
-import React, { useState, useEffect } from 'react';
-import { Sparkles, X } from 'lucide-react';
+import React, { useState } from 'react';
+import { Sparkles, X, Zap } from 'lucide-react';
 import { ONBOARDING_DISMISSED_KEY } from '../utils/constants';
 import sampleData from '../assets/sample-data.json';
 
 interface Props {
   onLoadSample: (data: any, name: string) => void;
+  onQuickDemo?: () => void;
 }
 
-export const OnboardingBanner: React.FC<Props> = ({ onLoadSample }) => {
+export const OnboardingBanner: React.FC<Props> = ({ onLoadSample, onQuickDemo }) => {
   const [dismissed, setDismissed] = useState(() => {
     return localStorage.getItem(ONBOARDING_DISMISSED_KEY) === 'true';
   });
@@ -40,12 +41,23 @@ export const OnboardingBanner: React.FC<Props> = ({ onLoadSample }) => {
           <p className="text-gray-400 text-sm mb-3">
             Convert geospatial data to H3 hexagonal grids. Upload a GeoJSON, CSV, KML, or Shapefile to get started.
           </p>
-          <button
-            onClick={handleLoadSample}
-            className="px-4 py-2 bg-blue-600/30 hover:bg-blue-600/50 text-blue-200 rounded-lg text-sm font-medium border border-blue-700/50 transition-colors"
-          >
-            Try our sample dataset
-          </button>
+          <div className="flex gap-2 flex-wrap">
+            {onQuickDemo && (
+              <button
+                onClick={onQuickDemo}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium border border-blue-500 transition-colors flex items-center gap-2"
+              >
+                <Zap className="w-4 h-4" />
+                See it in action
+              </button>
+            )}
+            <button
+              onClick={handleLoadSample}
+              className="px-4 py-2 bg-blue-600/30 hover:bg-blue-600/50 text-blue-200 rounded-lg text-sm font-medium border border-blue-700/50 transition-colors"
+            >
+              Load sample dataset
+            </button>
+          </div>
         </div>
       </div>
     </div>

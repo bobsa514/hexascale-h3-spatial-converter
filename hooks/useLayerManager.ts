@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { ColumnConfig, ColumnType, PointAggregation, GeoType, Layer } from '../types';
-import { getGeoType } from '../services/geoProcessor';
+import { getGeoType } from '../utils/geoType';
 import { analyzeColumnsLocally } from '../services/columnInference';
 import { FeatureCollection } from 'geojson';
 import { v4 as uuidv4 } from 'uuid';
@@ -136,6 +136,10 @@ export function useLayerManager() {
     setLayers(prev => prev.map(l => (l.id === layerId ? { ...l, ...updates } : l)));
   }, []);
 
+  const addLayerDirect = useCallback((layer: Layer) => {
+    setLayers(prev => [...prev, layer]);
+  }, []);
+
   const clearAll = useCallback(() => {
     setLayers([]);
     setTempCsvData(null);
@@ -157,6 +161,7 @@ export function useLayerManager() {
     handleCsvMapped,
     removeLayer,
     updateLayer,
+    addLayerDirect,
     clearAll,
   };
 }

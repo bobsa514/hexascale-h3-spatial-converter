@@ -1,6 +1,5 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback, Suspense } from 'react';
 import { SetupView } from './views/SetupView';
-import { ResultsView } from './views/ResultsView';
 import { CsvColumnMapper } from './components/CsvColumnMapper';
 import { LayerConfigModal } from './components/LayerConfigModal';
 import { useLayerManager } from './hooks/useLayerManager';
@@ -9,6 +8,17 @@ import { useExport } from './hooks/useExport';
 import { DEFAULT_H3_RESOLUTION } from './utils/constants';
 import { downloadConfig, deserializeConfig } from './utils/projectConfig';
 import { Map as MapIcon, Loader2, AlertTriangle, X as XIcon } from 'lucide-react';
+import { getGeoType } from './utils/geoType';
+import { analyzeColumnsLocally } from './services/columnInference';
+import { ColumnType, PointAggregation, Layer } from './types';
+import type { FeatureCollection } from 'geojson';
+import type { AreaInterpolationMode } from './types';
+import sampleData from './assets/sample-data.json';
+
+// Lazy-load ResultsView (includes HexMap + Leaflet) — only needed after processing
+const ResultsView = React.lazy(() =>
+  import('./views/ResultsView').then(m => ({ default: m.ResultsView }))
+);
 
 const App: React.FC = () => {
   const [view, setView] = useState<'setup' | 'results'>('setup');
@@ -61,6 +71,46 @@ const App: React.FC = () => {
     reader.readAsText(file);
     e.target.value = '';
   };
+
+  // One-click demo: auto-configure sample data and process immediately
+  const handleQuickDemo = useCallback(async () => {
+    const data = sampleData as unknown as FeatureCollection;
+
+    const type = getGeoType(data);
+    const props = data.features[0]?.properties || {};
+    const attrs = Object.keys(props);
+
+    const rawCols = attrs.map(key => ({ name: key, sample: (props as Record<string, unknown>)[key] }));
+    const suggestions = await analyzeColumnsLocally(rawCols, type);
+
+    const activeColumns = suggestions
+      .filter(s => s.type !== ColumnType.IGNORE)
+      .map(s => ({
+        id: crypto.randomUUID(),
+        name: s.name!,
+        outputName: s.name!,
+        sampleValue: (props as Record<string, unknown>)[s.name!],
+        type: s.type || ColumnType.EXTENSIVE,
+        extensiveMode: 'fast' as AreaInterpolationMode,
+        pointAggregation: s.pointAggregation || PointAggregation.COUNT,
+        ringSize: 0,
+      }));
+
+    const layer: Layer = {
+      id: crypto.randomUUID(),
+      fileName: 'sample-data.geojson',
+      data,
+      geoType: type,
+      availableAttributes: attrs,
+      activeColumns,
+      aiSuggestions: {},
+    };
+
+    // Set the layer in state so downloads work, then process
+    lm.addLayerDirect(layer);
+    const success = await proc.process([layer], h3Resolution);
+    if (success) setView('results');
+  }, [h3Resolution, proc, lm]);
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-200 font-sans selection:bg-blue-500/30">
@@ -115,18 +165,25 @@ const App: React.FC = () => {
             onSaveConfig={handleSaveConfig}
             onLoadConfig={handleLoadConfig}
             allOutputNames={allOutputNames}
+            onQuickDemo={handleQuickDemo}
           />
         )}
         {view === 'results' && (
-          <ResultsView
-            results={proc.results}
-            layers={lm.layers}
-            warnings={proc.warnings}
-            onDownloadCsv={downloadCsv}
-            onDownloadGeoJson={downloadGeoJson}
-            onBackToSetup={() => { proc.setStatus('idle'); setView('setup'); }}
-            onStartOver={startOver}
-          />
+          <Suspense fallback={
+            <div className="flex items-center justify-center h-[60vh]">
+              <Loader2 className="w-8 h-8 text-blue-400 animate-spin" />
+            </div>
+          }>
+            <ResultsView
+              results={proc.results}
+              layers={lm.layers}
+              warnings={proc.warnings}
+              onDownloadCsv={downloadCsv}
+              onDownloadGeoJson={downloadGeoJson}
+              onBackToSetup={() => { proc.setStatus('idle'); setView('setup'); }}
+              onStartOver={startOver}
+            />
+          </Suspense>
         )}
       </main>
 

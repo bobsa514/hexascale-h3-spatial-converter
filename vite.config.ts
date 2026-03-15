@@ -33,5 +33,15 @@ export default defineConfig({
     commonjsOptions: {
       transformMixedEsModules: true,
     },
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          // h3-js used by useExport — separate chunk, loaded on demand
+          if (id.includes('node_modules/h3-js/')) return 'vendor-h3';
+          // Leaflet only needed for map rendering — loads with ResultsView
+          if (id.includes('node_modules/leaflet/') || id.includes('node_modules/react-leaflet/')) return 'vendor-leaflet';
+        },
+      },
+    },
   }
 });

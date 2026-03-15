@@ -3,24 +3,14 @@ import * as turf from '@turf/turf';
 import { FeatureCollection, Feature, Geometry, Position } from 'geojson';
 import { ColumnConfig, ColumnType, PointAggregation, HexResult, GeoType } from '../types';
 import { ProcessingWarnings } from '../utils/errors';
+import { getGeoType } from '../utils/geoType';
+
+export { getGeoType };
 
 export interface ProcessingResult {
   results: HexResult[];
   warnings: ProcessingWarnings;
 }
-
-// Helper to determine GeoType
-export const getGeoType = (fc: FeatureCollection): GeoType => {
-  if (!fc.features.length) return GeoType.UNKNOWN;
-  const feature = fc.features.find(f => f.geometry);
-  if (!feature) return GeoType.UNKNOWN;
-
-  const type = feature.geometry.type;
-  if (type === 'Point' || type === 'MultiPoint') return GeoType.POINT;
-  if (type === 'LineString' || type === 'MultiLineString') return GeoType.LINE;
-  if (type === 'Polygon' || type === 'MultiPolygon') return GeoType.POLYGON;
-  return GeoType.UNKNOWN;
-};
 
 // --- Ring Aggregation (Spatial Smoothing) ---
 
@@ -164,10 +154,11 @@ const processPolygons = (
                 preciseShareByCell.set(cellId, 0);
                 return;
             }
-            const ring = boundary[0][0] === boundary[boundary.length - 1][0] &&
-                boundary[0][1] === boundary[boundary.length - 1][1]
+            const first = boundary[0]!;
+            const last = boundary[boundary.length - 1]!;
+            const ring = first[0] === last[0] && first[1] === last[1]
                 ? boundary
-                : [...boundary, boundary[0]];
+                : [...boundary, first];
             const hexPoly = turf.polygon([ring]);
             let intersectArea = 0;
             try {
@@ -276,7 +267,9 @@ const processPoints = (
         }
 
         coordsList.forEach(coord => {
-            const [lon, lat] = coord;
+            const lon = coord[0];
+            const lat = coord[1];
+            if (lon === undefined || lat === undefined) return;
             if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return;
 
             try {
@@ -368,15 +361,16 @@ const processLines = (
 
         lines.forEach(coords => {
             for (let i = 0; i < coords.length - 1; i++) {
-                const start = coords[i];
-                const end = coords[i+1];
+                const start = coords[i]!;
+                const end = coords[i+1]!;
                 const dist = turf.distance(start, end, { units: 'kilometers' });
                 const edgeLen = h3.getHexagonEdgeLengthAvg(resolution, h3.UNITS.km);
                 const steps = Math.max(1, Math.ceil(dist / (edgeLen * 0.5)));
 
                 for (let j = 0; j <= steps; j++) {
                     const interp = turf.along(turf.lineString([start, end]), (j/steps) * dist, { units: 'kilometers' });
-                    const [lon, lat] = interp.geometry.coordinates;
+                    const lon = interp.geometry.coordinates[0]!;
+                    const lat = interp.geometry.coordinates[1]!;
                     try {
                         featureCells.add(h3.latLngToCell(lat, lon, resolution));
                     } catch (e: any) {

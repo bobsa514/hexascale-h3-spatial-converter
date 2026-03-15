@@ -167,7 +167,8 @@ const MapSizer: React.FC = () => {
 export const HexMap: React.FC<Props> = ({ hexData }) => {
   const numericCols = useMemo(() => {
     if (hexData.length === 0) return [];
-    return getNumericColumns(hexData[0]);
+    const first = hexData[0];
+    return first ? getNumericColumns(first) : [];
   }, [hexData]);
 
   const [colorColumn, setColorColumn] = useState<string | null>(null);
@@ -175,7 +176,7 @@ export const HexMap: React.FC<Props> = ({ hexData }) => {
   // Auto-select first numeric column
   useEffect(() => {
     if (numericCols.length > 0 && !colorColumn) {
-      setColorColumn(numericCols[0]);
+      setColorColumn(numericCols[0] ?? null);
     }
   }, [numericCols]);
 

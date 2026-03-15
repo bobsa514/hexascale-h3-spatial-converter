@@ -5,7 +5,7 @@ import { HexResult, Layer } from '../types';
 
 export function useExport(results: HexResult[], layers: Layer[], h3Resolution: number) {
   const getBaseName = useCallback(() => {
-    if (layers.length === 1) {
+    if (layers.length === 1 && layers[0]) {
       return layers[0].fileName.replace(/\.[^/.]+$/, '');
     }
     return 'hexascale_merged';
