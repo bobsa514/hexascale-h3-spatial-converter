@@ -6,10 +6,15 @@ import { FeatureCollection } from 'geojson';
 import pointsFixture from './fixtures/points.json';
 import polygonsFixture from './fixtures/polygons.json';
 import linesFixture from './fixtures/lines.json';
+import conservationPolygon from './fixtures/conservation-polygon.json';
+import conservationLine from './fixtures/conservation-line.json';
+import mixedGeometry from './fixtures/mixed-geometry.json';
 
 const points = pointsFixture as FeatureCollection;
 const polygons = polygonsFixture as FeatureCollection;
 const lines = linesFixture as FeatureCollection;
+const conservationPoly = conservationPolygon as FeatureCollection;
+const conservationLn = conservationLine as FeatureCollection;
 
 describe('getGeoType', () => {
   it('detects Points', () => {
@@ -204,5 +209,300 @@ describe('processGeoJsonToH3 — Edge Cases', () => {
     await expect(
       processGeoJsonToH3(fc, { h3Resolution: 8, columns: [] })
     ).rejects.toThrow('Unsupported Geometry Type');
+  });
+});
+
+describe('Polygon Extensive Conservation', () => {
+  const INPUT_POPULATION = 10000;
+
+  it('precise mode conserves extensive totals within 5%', async () => {
+    const result = await processGeoJsonToH3(conservationPoly, {
+      h3Resolution: 8,
+      columns: [{
+        id: '1',
+        name: 'population',
+        outputName: 'population',
+        sampleValue: 10000,
+        type: ColumnType.EXTENSIVE,
+        extensiveMode: 'precise',
+        ringSize: 0,
+      }],
+    });
+
+    const totalOutput = result.results.reduce((sum, r) => sum + (r.population || 0), 0);
+    const error = Math.abs(totalOutput - INPUT_POPULATION) / INPUT_POPULATION;
+    console.log(`Precise mode: input=${INPUT_POPULATION}, output=${totalOutput.toFixed(2)}, error=${(error * 100).toFixed(2)}%`);
+    expect(error).toBeLessThan(0.05);
+  });
+
+  it('fast mode conserves extensive totals within 5%', async () => {
+    const result = await processGeoJsonToH3(conservationPoly, {
+      h3Resolution: 8,
+      columns: [{
+        id: '1',
+        name: 'population',
+        outputName: 'population',
+        sampleValue: 10000,
+        type: ColumnType.EXTENSIVE,
+        extensiveMode: 'fast',
+        ringSize: 0,
+      }],
+    });
+
+    const totalOutput = result.results.reduce((sum, r) => sum + (r.population || 0), 0);
+    const error = Math.abs(totalOutput - INPUT_POPULATION) / INPUT_POPULATION;
+    console.log(`Fast mode: input=${INPUT_POPULATION}, output=${totalOutput.toFixed(2)}, error=${(error * 100).toFixed(2)}%`);
+    expect(error).toBeLessThan(0.05);
+  });
+
+  it('intensive values remain stable across polygon cells', async () => {
+    const result = await processGeoJsonToH3(conservationPoly, {
+      h3Resolution: 8,
+      columns: [{
+        id: '1',
+        name: 'median_income',
+        outputName: 'median_income',
+        sampleValue: 75000,
+        type: ColumnType.INTENSIVE,
+        ringSize: 0,
+      }],
+    });
+
+    result.results.forEach(r => {
+      expect(r.median_income).toBeCloseTo(75000, -1);
+    });
+  });
+});
+
+describe('Intensive Invariant — Multi-Source', () => {
+  it('uniform intensive value is preserved across overlapping polygons', async () => {
+    const fc: FeatureCollection = {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          properties: { density: 500 },
+          geometry: {
+            type: 'Polygon',
+            coordinates: [[[-122.43, 37.77], [-122.42, 37.77], [-122.42, 37.79], [-122.43, 37.79], [-122.43, 37.77]]]
+          }
+        },
+        {
+          type: 'Feature',
+          properties: { density: 500 },
+          geometry: {
+            type: 'Polygon',
+            coordinates: [[[-122.42, 37.77], [-122.41, 37.77], [-122.41, 37.79], [-122.42, 37.79], [-122.42, 37.77]]]
+          }
+        }
+      ]
+    };
+
+    const result = await processGeoJsonToH3(fc, {
+      h3Resolution: 8,
+      columns: [{
+        id: '1',
+        name: 'density',
+        outputName: 'density',
+        sampleValue: 500,
+        type: ColumnType.INTENSIVE,
+        ringSize: 0,
+      }],
+    });
+
+    result.results.forEach(r => {
+      expect(r.density).toBeCloseTo(500, -1);
+    });
+  });
+});
+
+describe('Mixed Geometry Handling', () => {
+  it('warns about mixed types and processes only primary type', async () => {
+    const fc = mixedGeometry as unknown as FeatureCollection;
+    const result = await processGeoJsonToH3(fc, {
+      h3Resolution: 8,
+      columns: [{
+        id: '1', name: 'value', outputName: 'value',
+        sampleValue: 100, type: ColumnType.EXTENSIVE,
+        extensiveMode: 'fast', ringSize: 0,
+      }],
+    });
+
+    expect(result.warnings.hasWarnings()).toBe(true);
+    const summary = result.warnings.toSummary();
+    expect(summary.some(w => w.includes('Mixed geometry'))).toBe(true);
+    expect(summary.some(w => w.includes('no geometry'))).toBe(true);
+    expect(result.results.length).toBeGreaterThan(0);
+  });
+});
+
+describe('Line Extensive Conservation', () => {
+  const INPUT_TRAFFIC = 1000;
+
+  it('extensive total is conserved across hex cells', async () => {
+    const result = await processGeoJsonToH3(conservationLn, {
+      h3Resolution: 8,
+      columns: [{
+        id: '1',
+        name: 'traffic_count',
+        outputName: 'traffic_count',
+        sampleValue: 1000,
+        type: ColumnType.EXTENSIVE,
+        ringSize: 0,
+      }],
+    });
+
+    const totalOutput = result.results.reduce((sum, r) => sum + (r.traffic_count || 0), 0);
+    const error = Math.abs(totalOutput - INPUT_TRAFFIC) / INPUT_TRAFFIC;
+    console.log(`Line extensive: input=${INPUT_TRAFFIC}, output=${totalOutput.toFixed(2)}, error=${(error * 100).toFixed(2)}%`);
+    expect(error).toBeLessThan(0.01);
+  });
+
+  it('intensive values are averaged, not distributed', async () => {
+    const result = await processGeoJsonToH3(conservationLn, {
+      h3Resolution: 8,
+      columns: [{
+        id: '1',
+        name: 'speed_avg',
+        outputName: 'speed_avg',
+        sampleValue: 45,
+        type: ColumnType.INTENSIVE,
+        ringSize: 0,
+      }],
+    });
+
+    result.results.forEach(r => {
+      expect(r.speed_avg).toBeCloseTo(45, 0);
+    });
+  });
+});
+
+describe('Categorical Column Type', () => {
+  it('assigns categorical value from polygon with highest weight (precise mode)', async () => {
+    const fc: FeatureCollection = {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          properties: { zone: 'residential', population: 500 },
+          geometry: {
+            type: 'Polygon',
+            coordinates: [[[-122.43, 37.77], [-122.415, 37.77], [-122.415, 37.79], [-122.43, 37.79], [-122.43, 37.77]]]
+          }
+        },
+        {
+          type: 'Feature',
+          properties: { zone: 'commercial', population: 800 },
+          geometry: {
+            type: 'Polygon',
+            coordinates: [[[-122.425, 37.77], [-122.41, 37.77], [-122.41, 37.79], [-122.425, 37.79], [-122.425, 37.77]]]
+          }
+        }
+      ]
+    };
+
+    const result = await processGeoJsonToH3(fc, {
+      h3Resolution: 8,
+      columns: [{
+        id: '1', name: 'zone', outputName: 'zone',
+        sampleValue: 'residential', type: ColumnType.CATEGORICAL,
+        extensiveMode: 'precise', ringSize: 0,
+      }],
+    });
+
+    result.results.forEach(r => {
+      expect(typeof r.zone).toBe('string');
+      expect(['residential', 'commercial']).toContain(r.zone);
+    });
+  });
+
+  it('handles categorical columns for points (first value)', async () => {
+    const result = await processGeoJsonToH3(points, {
+      h3Resolution: 8,
+      columns: [{
+        id: '1', name: 'category', outputName: 'point_category',
+        sampleValue: 'A', type: ColumnType.CATEGORICAL,
+        pointAggregation: PointAggregation.COUNT,
+        ringSize: 0,
+      }],
+    });
+
+    result.results.forEach(r => {
+      expect(r.point_category).toBeDefined();
+      expect(typeof r.point_category).toBe('string');
+    });
+  });
+
+  it('handles categorical columns for lines (highest share wins)', async () => {
+    const result = await processGeoJsonToH3(conservationLn, {
+      h3Resolution: 8,
+      columns: [{
+        id: '1',
+        name: 'road_id',
+        outputName: 'road_id',
+        sampleValue: 'TEST1',
+        type: ColumnType.CATEGORICAL,
+        ringSize: 0,
+      }],
+    });
+
+    result.results.forEach(r => {
+      expect(r.road_id).toBe('TEST1');
+    });
+  });
+});
+
+describe('Multi-Ring Aggregation', () => {
+  it('generates multiple _ringN columns when ringSizes has multiple entries', async () => {
+    const result = await processGeoJsonToH3(points, {
+      h3Resolution: 8,
+      columns: [
+        {
+          id: '1',
+          name: 'population',
+          outputName: 'population',
+          sampleValue: 100,
+          type: ColumnType.EXTENSIVE,
+          pointAggregation: PointAggregation.SUM,
+          ringSizes: [1, 3],
+          ringSize: 1,
+        },
+      ],
+    });
+
+    expect(result.results.length).toBeGreaterThan(0);
+    // Original column should still exist
+    result.results.forEach(r => {
+      expect(r.population).toBeDefined();
+      // Multi-ring columns should exist
+      expect(typeof r.population_ring1).toBe('number');
+      expect(typeof r.population_ring3).toBe('number');
+      // ring3 should include a wider neighborhood, so >= ring1 for extensive
+      expect(r.population_ring3).toBeGreaterThanOrEqual(r.population_ring1);
+    });
+  });
+
+  it('single ringSize still overwrites the column (backward compat)', async () => {
+    const result = await processGeoJsonToH3(points, {
+      h3Resolution: 8,
+      columns: [
+        {
+          id: '1',
+          name: 'population',
+          outputName: 'population',
+          sampleValue: 100,
+          type: ColumnType.EXTENSIVE,
+          pointAggregation: PointAggregation.SUM,
+          ringSize: 1,
+        },
+      ],
+    });
+
+    expect(result.results.length).toBeGreaterThan(0);
+    result.results.forEach(r => {
+      expect(r.population).toBeDefined();
+      // No _ringN suffix columns should exist
+      expect(r.population_ring1).toBeUndefined();
+    });
   });
 });

@@ -12,13 +12,52 @@ export interface ProcessingResult {
   warnings: ProcessingWarnings;
 }
 
+type BBox = [number, number, number, number];
+
+const toBoundaryBBox = (boundary: number[][]): BBox | null => {
+  if (!boundary.length) return null;
+
+  let minLng = Infinity;
+  let minLat = Infinity;
+  let maxLng = -Infinity;
+  let maxLat = -Infinity;
+
+  for (const point of boundary) {
+    const lng = point[0];
+    const lat = point[1];
+    if (lng === undefined || lat === undefined) continue;
+    if (lng < minLng) minLng = lng;
+    if (lat < minLat) minLat = lat;
+    if (lng > maxLng) maxLng = lng;
+    if (lat > maxLat) maxLat = lat;
+  }
+
+  if (!Number.isFinite(minLng) || !Number.isFinite(minLat) || !Number.isFinite(maxLng) || !Number.isFinite(maxLat)) {
+    return null;
+  }
+
+  return [minLng, minLat, maxLng, maxLat];
+};
+
+const bboxesOverlap = (a: BBox, b: BBox): boolean =>
+  a[0] <= b[2] && a[2] >= b[0] && a[1] <= b[3] && a[3] >= b[1];
+
 // --- Ring Aggregation (Spatial Smoothing) ---
+// Supports single ringSize (backward compat) or multiple ringSizes for multi-band output.
+// Single ring: overwrites the column value with the neighborhood aggregate.
+// Multiple rings: keeps original value AND adds _ring{N} columns for each ring size.
 
 const applyRingAggregation = (
     data: HexResult[],
     columns: ColumnConfig[]
 ): HexResult[] => {
-    const colsToAggregate = columns.filter(c => c.ringSize && c.ringSize > 0 && c.type !== ColumnType.ID && c.type !== ColumnType.IGNORE);
+    const colsToAggregate = columns.filter(c => {
+        const sizes = c.ringSizes?.length ? c.ringSizes : (c.ringSize ? [c.ringSize] : []);
+        return sizes.some(s => s > 0) &&
+            c.type !== ColumnType.ID &&
+            c.type !== ColumnType.CATEGORICAL &&
+            c.type !== ColumnType.IGNORE;
+    });
 
     if (colsToAggregate.length === 0) {
         return data;
@@ -31,36 +70,40 @@ const applyRingAggregation = (
         const newRow: HexResult = { ...currentRow };
 
         colsToAggregate.forEach(col => {
-            const k = col.ringSize || 0;
+            const sizes = col.ringSizes?.length ? col.ringSizes : (col.ringSize ? [col.ringSize] : []);
             const targetField = col.outputName;
-
-            const neighbors = h3.gridDisk(currentRow.hexId, k);
-
-            let sum = 0;
-            let count = 0;
-
-            for (const neighborHexId of neighbors) {
-                const neighborData = dataMap.get(neighborHexId);
-                if (neighborData) {
-                    const val = parseFloat(neighborData[targetField]);
-                    if (!isNaN(val)) {
-                        sum += val;
-                        count++;
-                    }
-                }
-            }
+            const isMultiRing = sizes.length > 1;
 
             const isIntensive =
                 col.type === ColumnType.INTENSIVE ||
-                (col.type === 'Aggregated Value' as any) ||
                 col.pointAggregation === PointAggregation.AVERAGE ||
                 col.pointAggregation === PointAggregation.MIN ||
                 col.pointAggregation === PointAggregation.MAX;
 
-            if (isIntensive) {
-                newRow[targetField] = count > 0 ? sum / count : 0;
-            } else {
-                newRow[targetField] = sum;
+            for (const k of sizes) {
+                if (k <= 0) continue;
+
+                // Multi-ring: add suffix. Single ring: overwrite original column.
+                const ringField = isMultiRing ? `${targetField}_ring${k}` : targetField;
+                const neighbors = h3.gridDisk(currentRow.hexId, k);
+
+                let sum = 0;
+                let count = 0;
+
+                for (const neighborHexId of neighbors) {
+                    const neighborData = dataMap.get(neighborHexId);
+                    if (neighborData) {
+                        const val = parseFloat(neighborData[targetField]);
+                        if (!isNaN(val)) {
+                            sum += val;
+                            count++;
+                        }
+                    }
+                }
+
+                newRow[ringField] = isIntensive
+                    ? (count > 0 ? sum / count : 0)
+                    : sum;
             }
         });
 
@@ -134,11 +177,11 @@ const processPolygons = (
 
     const uniqueCells = Array.from(new Set(allCells));
     const preciseShareByCell = new Map<string, number>();
-    let fastShare = 0;
-    if (hasExtensive && polygonAreaM2 > 0) {
-        const areaScale = Math.max(1, polygonAreaM2 / hexAreaM2);
-        fastShare = 1 / areaScale;
-    }
+    // Conservative fast share: distribute equally across actual cells
+    // Guarantees sum(shares) === 1.0 regardless of polygon shape
+    const fastShare = hasExtensive && uniqueCells.length > 0
+        ? 1 / uniqueCells.length
+        : 0;
 
     const canUsePreciseWeight = hasPreciseExtensive && polygonAreaM2 > 0;
     const polygonParts = canUsePreciseWeight
@@ -146,11 +189,19 @@ const processPolygons = (
             .flatten(feature as any)
             .features.filter((f: any) => f?.geometry?.type === 'Polygon')
         : [];
+    const polygonBBox = canUsePreciseWeight
+        ? turf.bbox(feature as any) as BBox
+        : null;
 
     if (canUsePreciseWeight) {
         uniqueCells.forEach((cellId) => {
             const boundary = h3.cellToBoundary(cellId, true);
             if (!boundary || boundary.length < 3) {
+                preciseShareByCell.set(cellId, 0);
+                return;
+            }
+            const boundaryBBox = toBoundaryBBox(boundary);
+            if (!boundaryBBox || !polygonBBox || !bboxesOverlap(boundaryBBox, polygonBBox)) {
                 preciseShareByCell.set(cellId, 0);
                 return;
             }
@@ -195,6 +246,19 @@ const processPolygons = (
                     return;
                 }
 
+                if (col.type === ColumnType.CATEGORICAL) {
+                    // Largest-overlap wins: track weight per source, keep highest
+                    const weight = canUsePreciseWeight
+                        ? (preciseShareByCell.get(cellId) || 0)
+                        : fastShare;
+                    const currentWeight = entry.data[`__cat_weight_${targetField}`] || 0;
+                    if (weight > currentWeight || entry.data[targetField] === undefined) {
+                        entry.data[targetField] = props[col.name];
+                        entry.data[`__cat_weight_${targetField}`] = weight;
+                    }
+                    return;
+                }
+
                 const rawVal = parseFloat(props[col.name] || 0);
                 if (isNaN(rawVal)) {
                     return;
@@ -234,6 +298,10 @@ const processPolygons = (
       const weight = val.intensiveWeight[targetField] || 0;
       output[targetField] = weight > 0 ? sum / weight : 0;
     });
+    // Remove internal categorical weight tracking keys
+    for (const key of Object.keys(output)) {
+      if (key.startsWith('__cat_weight_')) delete output[key];
+    }
     return output;
   });
 };
@@ -301,6 +369,12 @@ const processPoints = (
                 return;
             }
 
+            if (col.type === ColumnType.CATEGORICAL) {
+                // For points: take the first value in this hex bucket
+                row[targetField] = propsList[0]?.[col.name] ?? '';
+                return;
+            }
+
             const values = propsList.map(p => parseFloat(p[col.name] || 0)).filter(v => !isNaN(v));
 
             if (values.length === 0) {
@@ -343,9 +417,9 @@ const processLines = (
     warnings: ProcessingWarnings,
     onProgress?: (processed: number, total: number) => void
 ): HexResult[] => {
-    // Each entry stores properties + how many cells the source feature touches,
-    // so extensive values can be distributed proportionally (value / cellCount).
-    const hexMap = new Map<string, { props: any; cellCount: number }[]>();
+    // Each entry stores properties + length-weighted share of the feature in this cell.
+    // share = (sample points in this cell) / (total sample points for this feature).
+    const hexMap = new Map<string, { props: any; share: number }[]>();
     const total = fc.features.length;
     const step = Math.max(1, Math.floor(total / 200));
     let processed = 0;
@@ -363,7 +437,9 @@ const processLines = (
             return;
         }
 
-        const featureCells = new Set<string>();
+        // Track sample count per cell for length-weighted distribution
+        const cellSampleCounts = new Map<string, number>();
+        let totalSamples = 0;
 
         lines.forEach(coords => {
             for (let i = 0; i < coords.length - 1; i++) {
@@ -378,7 +454,9 @@ const processLines = (
                     const lon = interp.geometry.coordinates[0]!;
                     const lat = interp.geometry.coordinates[1]!;
                     try {
-                        featureCells.add(h3.latLngToCell(lat, lon, resolution));
+                        const hexId = h3.latLngToCell(lat, lon, resolution);
+                        cellSampleCounts.set(hexId, (cellSampleCounts.get(hexId) || 0) + 1);
+                        totalSamples++;
                     } catch (e: any) {
                         warnings.add(`H3 line sampling error: ${e.message || 'unknown'}`);
                     }
@@ -386,10 +464,11 @@ const processLines = (
             }
         });
 
-        const cellCount = featureCells.size;
-        featureCells.forEach(hexId => {
+        // Each cell gets a share proportional to samples-in-cell / total-samples
+        cellSampleCounts.forEach((sampleCount, hexId) => {
             if (!hexMap.has(hexId)) hexMap.set(hexId, []);
-            hexMap.get(hexId)!.push({ props: f.properties, cellCount });
+            const share = totalSamples > 0 ? sampleCount / totalSamples : 0;
+            hexMap.get(hexId)!.push({ props: f.properties, share });
         });
 
         processed++;
@@ -411,17 +490,35 @@ const processLines = (
                  return;
              }
 
+             if (col.type === ColumnType.CATEGORICAL) {
+                 // Take value from entry with highest share (most line length in this cell)
+                 let bestEntry = entries[0];
+                 for (const e of entries) {
+                     if ((e.share || 0) > (bestEntry?.share || 0)) bestEntry = e;
+                 }
+                 row[targetField] = bestEntry?.props?.[col.name];
+                 return;
+             }
+
              if (col.type === ColumnType.INTENSIVE) {
-                 const vals = entries.map(e => parseFloat(e.props[col.name] || 0)).filter(v => !isNaN(v));
-                 const sum = vals.reduce((a, b) => a + b, 0);
-                 row[targetField] = vals.length ? sum / vals.length : 0;
+                 // Length-weighted average across features in this cell
+                 let weightedSum = 0;
+                 let weightTotal = 0;
+                 for (const e of entries) {
+                     const val = parseFloat(e.props[col.name] || 0);
+                     if (!isNaN(val) && e.share > 0) {
+                         weightedSum += val * e.share;
+                         weightTotal += e.share;
+                     }
+                 }
+                 row[targetField] = weightTotal > 0 ? weightedSum / weightTotal : 0;
              } else if (col.type === ColumnType.EXTENSIVE) {
-                 // Distribute each feature's value by 1/cellCount to conserve totals
+                 // Length-weighted share distribution to conserve totals
                  let sum = 0;
                  for (const e of entries) {
                      const val = parseFloat(e.props[col.name] || 0);
-                     if (!isNaN(val) && e.cellCount > 0) {
-                         sum += val / e.cellCount;
+                     if (!isNaN(val)) {
+                         sum += val * e.share;
                      }
                  }
                  row[targetField] = sum;

@@ -12,6 +12,7 @@ interface Props {
 
 export const LayerConfigModal: React.FC<Props> = ({ layer, allOutputNames, onUpdate, onClose }) => {
   const [selectedAttr, setSelectedAttr] = useState('');
+  const defaultPolygonExtensiveMode: AreaInterpolationMode = 'precise';
 
   // Output names from OTHER layers: remove exactly one occurrence per current-layer column
   // to correctly detect cross-layer conflicts
@@ -52,7 +53,7 @@ export const LayerConfigModal: React.FC<Props> = ({ layer, allOutputNames, onUpd
       outputName,
       sampleValue: null,
       type,
-      extensiveMode: 'fast',
+      extensiveMode: layer.geoType === GeoType.POLYGON ? defaultPolygonExtensiveMode : 'fast',
       pointAggregation: suggestion?.aggregation || PointAggregation.COUNT,
       ringSize: 0
     };
@@ -213,16 +214,20 @@ export const LayerConfigModal: React.FC<Props> = ({ layer, allOutputNames, onUpd
                                           } else if (layer.geoType === GeoType.POLYGON && v === 'EXTENSIVE_FAST') {
                                             updateColumn(col.id, { type: ColumnType.EXTENSIVE, extensiveMode: 'fast' as AreaInterpolationMode });
                                           } else {
-                                            updateColumn(col.id, { type: v as ColumnType, extensiveMode: 'fast' as AreaInterpolationMode });
+                                            updateColumn(col.id, {
+                                              type: v as ColumnType,
+                                              extensiveMode: layer.geoType === GeoType.POLYGON ? defaultPolygonExtensiveMode : 'fast'
+                                            });
                                           }
                                         }}
                                     >
                                         <option value={ColumnType.ID}>ID</option>
+                                        <option value={ColumnType.CATEGORICAL}>Categorical (Text)</option>
                                         <option value={ColumnType.INTENSIVE}>Intensive (Avg)</option>
                                         {layer.geoType === GeoType.POLYGON ? (
                                           <>
-                                            <option value="EXTENSIVE_FAST">Extensive (Fast)</option>
-                                            <option value="EXTENSIVE_PRECISE">Extensive (Precise)</option>
+                                            <option value="EXTENSIVE_FAST">Extensive (Approximate, Faster)</option>
+                                            <option value="EXTENSIVE_PRECISE">Extensive (Exact Area)</option>
                                           </>
                                         ) : (
                                           <option value={ColumnType.EXTENSIVE}>Extensive (Sum)</option>
@@ -230,11 +235,11 @@ export const LayerConfigModal: React.FC<Props> = ({ layer, allOutputNames, onUpd
                                     </select>
                                     {layer.geoType === GeoType.POLYGON && (
                                       <div className="text-[10px] text-gray-500 mt-1 leading-snug">
-                                        Fast: approximate (uniform split, may not conserve totals exactly). Precise: hex∩polygon intersection (conserves totals).
+                                        Approximate: equal split across touched hexes, conservative but less spatially accurate. Exact Area: hex∩polygon intersection, conservative and slower.
                                       </div>
                                     )}
                                 </div>
-                                {layer.geoType === GeoType.POINT && (
+                                {layer.geoType === GeoType.POINT && col.type !== ColumnType.CATEGORICAL && col.type !== ColumnType.ID && (
                                     <div>
                                         <label className="text-[10px] uppercase text-gray-500 font-bold tracking-wider">Aggregation</label>
                                         <select
@@ -252,21 +257,41 @@ export const LayerConfigModal: React.FC<Props> = ({ layer, allOutputNames, onUpd
                                 )}
                             </div>
 
-                            {col.type !== ColumnType.ID && (
+                            {col.type !== ColumnType.ID && col.type !== ColumnType.CATEGORICAL && (
                                 <div>
                                     <label className="text-[10px] uppercase text-gray-500 font-bold tracking-wider flex items-center">
                                         <CircleDot className="w-3 h-3 mr-1 text-purple-400" /> Ring Aggregation
                                     </label>
-                                    <select
-                                        className="w-full bg-gray-900 border border-gray-600 rounded text-sm px-2 py-1.5 text-purple-300 outline-none"
-                                        value={col.ringSize || 0}
-                                        onChange={(e) => updateColumn(col.id, { ringSize: parseInt(e.target.value) })}
-                                    >
-                                        <option value={0}>No Ring</option>
-                                        {[1,2,3,4,5,6,7,8].map(r => (
-                                            <option key={r} value={r}>Ring {r} (Neighbors)</option>
-                                        ))}
-                                    </select>
+                                    <div className="flex flex-wrap gap-1 mt-1">
+                                        {[1, 2, 3, 6].map(r => {
+                                            const currentSizes = col.ringSizes?.length ? col.ringSizes : (col.ringSize ? [col.ringSize] : []);
+                                            const isActive = currentSizes.includes(r);
+                                            return (
+                                                <button
+                                                    key={r}
+                                                    onClick={() => {
+                                                        const newSizes = isActive
+                                                            ? currentSizes.filter(s => s !== r)
+                                                            : [...currentSizes, r].sort((a, b) => a - b);
+                                                        updateColumn(col.id, {
+                                                            ringSizes: newSizes,
+                                                            ringSize: newSizes[0] || 0,
+                                                        });
+                                                    }}
+                                                    className={`px-2 py-1 text-xs rounded border transition-colors ${
+                                                        isActive
+                                                            ? 'bg-purple-900/50 border-purple-600 text-purple-300'
+                                                            : 'bg-gray-900 border-gray-700 text-gray-500 hover:border-gray-600'
+                                                    }`}
+                                                >
+                                                    Ring {r}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    <div className="text-[10px] text-gray-500 mt-1 leading-snug">
+                                        Select multiple rings to generate neighborhood columns at different scales (e.g., _ring1, _ring3).
+                                    </div>
                                 </div>
                             )}
                         </div>

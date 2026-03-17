@@ -1,0 +1,23 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "name": "poly1", "value": 100 },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[-122.43, 37.77], [-122.42, 37.77], [-122.42, 37.78], [-122.43, 37.78], [-122.43, 37.77]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "point1", "value": 50 },
+      "geometry": { "type": "Point", "coordinates": [-122.42, 37.78] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "nullgeo", "value": 25 },
+      "geometry": null
+    }
+  ]
+}

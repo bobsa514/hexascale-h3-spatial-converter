@@ -162,6 +162,12 @@ export const SetupView: React.FC<Props> = ({
                         </span>
                       )}
                     </div>
+                    {layer.mixedGeometryWarning && (
+                      <div className="text-xs text-yellow-400/80 flex items-center gap-1 mt-0.5">
+                        <AlertCircle className="w-3 h-3 flex-shrink-0" />
+                        {layer.mixedGeometryWarning}
+                      </div>
+                    )}
                   </div>
                 </div>
 

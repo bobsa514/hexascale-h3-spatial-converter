@@ -17,7 +17,8 @@ Existing tools (Python's `tobler`, `h3fy`) require a Python environment. HexaSca
 - **Intensive vs. extensive handling** — Population gets distributed proportionally across hexagons. Density gets area-weighted averaged. Most tools treat everything the same.
 - **Precise polygon mode** — Computes exact hex-polygon intersection areas using `turf.intersect()`, not just point-in-polygon approximations.
 - **Multi-layer merging** — Upload multiple files, configure each independently, and merge results by hex ID into a single output.
-- **Ring aggregation** — Optional spatial smoothing using H3's k-ring neighbors.
+- **Multi-ring aggregation** — Generate neighborhood columns at multiple spatial scales (ring 1, 3, 6) simultaneously.
+- **Categorical columns** — Text/string attributes assigned by "largest overlap" strategy.
 
 ## Supported Formats
 
@@ -53,7 +54,27 @@ Or use the [live version](https://hexascale.boyangsa.com/) — no install needed
 |------|---------|---------|-----------------|
 | Intensive | Doesn't scale with area | Income, temperature, density | Weighted average across hexagons |
 | Extensive | Scales with area | Population, housing units, volume | Proportionally distributed across hexagons |
+| Categorical | Text/string attribute | Zone name, land use type | "Largest overlap" wins (polygon), first value (point) |
 | ID | Identifier | FIPS code, tract ID | Kept as-is (first value) |
+
+### Processing Modes (Polygons)
+
+| Mode | Speed | Accuracy | How it works |
+|------|-------|----------|--------------|
+| **Exact Area** (default) | Slower | Precise, conserves totals | Computes actual hex-polygon intersection area via `turf.intersect()` |
+| **Approximate** | Faster | Conservative, conserves totals | Distributes value equally across all covered hex cells (`1/N` share) |
+
+Both modes guarantee that the total value across all output hexagons equals the input total (extensive conservation).
+
+### Multi-Ring Aggregation
+
+Select multiple ring sizes (1, 2, 3, 6) per column to generate neighborhood summary columns at different spatial scales:
+
+- `population` — original value
+- `population_ring1` — 1-hop neighborhood (7 cells)
+- `population_ring3` — 3-hop neighborhood (~37 cells)
+
+Intensive columns (income, density) get averaged. Extensive columns (population, count) get summed.
 
 ## Development
 

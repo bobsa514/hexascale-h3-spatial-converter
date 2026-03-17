@@ -1,0 +1,13 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "road_id": "TEST1", "traffic_count": 1000, "speed_avg": 45 },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[-122.45, 37.78], [-122.40, 37.78]]
+      }
+    }
+  ]
+}

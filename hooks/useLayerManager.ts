@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { ColumnConfig, ColumnType, PointAggregation, GeoType, Layer } from '../types';
-import { getGeoType } from '../utils/geoType';
+import { getGeoType, getGeoTypeDetailed } from '../utils/geoType';
 import { analyzeColumnsLocally } from '../services/columnInference';
 import { FeatureCollection } from 'geojson';
 import { v4 as uuidv4 } from 'uuid';
@@ -27,8 +27,14 @@ export function useLayerManager() {
     setAnalyzeError(null);
 
     try {
-      const type = getGeoType(data);
+      const { primaryType: type, skippedCount, counts } = getGeoTypeDetailed(data);
       const newLayerId = uuidv4();
+
+      let mixedGeometryWarning: string | undefined;
+      if (skippedCount > 0) {
+        const detail = Object.entries(counts).map(([t, c]) => `${c} ${t}`).join(', ');
+        mixedGeometryWarning = `Will process ${type} features. Dataset contains: ${detail}. ${skippedCount} feature(s) will be skipped.`;
+      }
 
       // Scan first N features for the union of all property keys
       const SCAN_LIMIT = 50;
@@ -68,16 +74,13 @@ export function useLayerManager() {
       }
 
       // Check for a matching pending config (from a loaded project file)
-      let restoredColumns: ColumnConfig[] = [];
-      setPendingConfigs(prev => {
-        const matchIdx = prev.findIndex(pc => pc.fileName === name);
-        if (matchIdx >= 0) {
-          restoredColumns = prev[matchIdx]!.activeColumns;
-          // Remove matched config
-          return prev.filter((_, i) => i !== matchIdx);
-        }
-        return prev;
-      });
+      const matchedConfig = pendingConfigs.find(
+        pc => pc.fileName === name && pc.geoType === type
+      );
+      const restoredColumns = matchedConfig?.activeColumns ?? [];
+      if (matchedConfig) {
+        setPendingConfigs(prev => prev.filter(pc => pc !== matchedConfig));
+      }
 
       const newLayer: Layer = {
         id: newLayerId,
@@ -87,6 +90,7 @@ export function useLayerManager() {
         availableAttributes,
         activeColumns: restoredColumns,
         aiSuggestions,
+        mixedGeometryWarning,
       };
 
       setLayers(prev => [...prev, newLayer]);
@@ -99,7 +103,7 @@ export function useLayerManager() {
     } finally {
       setAnalyzing(false);
     }
-  }, []);
+  }, [pendingConfigs]);
 
   const handleCsvLoaded = useCallback((data: any[], name: string) => {
     setTempCsvData({ data, name });

@@ -112,6 +112,14 @@ describe('analyzeColumnsLocally — false positive regression', () => {
     );
     expect(results[0]!.type).toBe(ColumnType.EXTENSIVE);
   });
+
+  it('"land_use" is classified as categorical for non-numeric text', async () => {
+    const results = await analyzeColumnsLocally(
+      [{ name: 'land_use', sample: 'residential' }],
+      GeoType.POLYGON
+    );
+    expect(results[0]!.type).toBe(ColumnType.CATEGORICAL);
+  });
 });
 
 describe('analyzeColumnsLocally — point classification', () => {
