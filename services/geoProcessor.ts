@@ -343,9 +343,9 @@ const processLines = (
     warnings: ProcessingWarnings,
     onProgress?: (processed: number, total: number) => void
 ): HexResult[] => {
-    // Each entry stores properties + how many cells the source feature touches,
-    // so extensive values can be distributed proportionally (value / cellCount).
-    const hexMap = new Map<string, { props: any; cellCount: number }[]>();
+    // Each entry stores properties + length-weighted share of the feature in this cell.
+    // share = (sample points in this cell) / (total sample points for this feature).
+    const hexMap = new Map<string, { props: any; share: number }[]>();
     const total = fc.features.length;
     const step = Math.max(1, Math.floor(total / 200));
     let processed = 0;
@@ -363,7 +363,9 @@ const processLines = (
             return;
         }
 
-        const featureCells = new Set<string>();
+        // Track sample count per cell for length-weighted distribution
+        const cellSampleCounts = new Map<string, number>();
+        let totalSamples = 0;
 
         lines.forEach(coords => {
             for (let i = 0; i < coords.length - 1; i++) {
@@ -378,7 +380,9 @@ const processLines = (
                     const lon = interp.geometry.coordinates[0]!;
                     const lat = interp.geometry.coordinates[1]!;
                     try {
-                        featureCells.add(h3.latLngToCell(lat, lon, resolution));
+                        const hexId = h3.latLngToCell(lat, lon, resolution);
+                        cellSampleCounts.set(hexId, (cellSampleCounts.get(hexId) || 0) + 1);
+                        totalSamples++;
                     } catch (e: any) {
                         warnings.add(`H3 line sampling error: ${e.message || 'unknown'}`);
                     }
@@ -386,10 +390,11 @@ const processLines = (
             }
         });
 
-        const cellCount = featureCells.size;
-        featureCells.forEach(hexId => {
+        // Each cell gets a share proportional to samples-in-cell / total-samples
+        cellSampleCounts.forEach((sampleCount, hexId) => {
             if (!hexMap.has(hexId)) hexMap.set(hexId, []);
-            hexMap.get(hexId)!.push({ props: f.properties, cellCount });
+            const share = totalSamples > 0 ? sampleCount / totalSamples : 0;
+            hexMap.get(hexId)!.push({ props: f.properties, share });
         });
 
         processed++;
@@ -412,16 +417,24 @@ const processLines = (
              }
 
              if (col.type === ColumnType.INTENSIVE) {
-                 const vals = entries.map(e => parseFloat(e.props[col.name] || 0)).filter(v => !isNaN(v));
-                 const sum = vals.reduce((a, b) => a + b, 0);
-                 row[targetField] = vals.length ? sum / vals.length : 0;
+                 // Length-weighted average across features in this cell
+                 let weightedSum = 0;
+                 let weightTotal = 0;
+                 for (const e of entries) {
+                     const val = parseFloat(e.props[col.name] || 0);
+                     if (!isNaN(val) && e.share > 0) {
+                         weightedSum += val * e.share;
+                         weightTotal += e.share;
+                     }
+                 }
+                 row[targetField] = weightTotal > 0 ? weightedSum / weightTotal : 0;
              } else if (col.type === ColumnType.EXTENSIVE) {
-                 // Distribute each feature's value by 1/cellCount to conserve totals
+                 // Length-weighted share distribution to conserve totals
                  let sum = 0;
                  for (const e of entries) {
                      const val = parseFloat(e.props[col.name] || 0);
-                     if (!isNaN(val) && e.cellCount > 0) {
-                         sum += val / e.cellCount;
+                     if (!isNaN(val)) {
+                         sum += val * e.share;
                      }
                  }
                  row[targetField] = sum;
