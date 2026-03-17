@@ -1,11 +1,11 @@
 import React, { useRef, useState, DragEvent } from 'react';
-import { Upload, FileType, AlertCircle, Loader2 } from 'lucide-react';
-import Papa from 'papaparse';
-import shp from 'shpjs';
-import { kml } from '@tmcw/togeojson';
-import JSZip from 'jszip';
+import { Upload, Loader2 } from 'lucide-react';
 import { FeatureCollection } from 'geojson';
 import { MAX_FILE_SIZE_BYTES, MAX_FILE_SIZE_MB, WARN_FILE_SIZE_BYTES, WARN_FILE_SIZE_MB } from '../utils/constants';
+import type {
+  FileParseWorkerInMessage,
+  FileParseWorkerOutMessage,
+} from '../workers/fileParseWorkerTypes';
 
 interface Props {
   onDataLoaded: (data: any, fileName: string) => void;
@@ -72,123 +72,44 @@ export const FileUpload: React.FC<Props> = ({ onDataLoaded, onCsvLoaded, onError
       const isKmz = name.endsWith('.kmz');
       const isZip = name.endsWith('.zip');
 
-      if (isCsv) {
-        Papa.parse(file, {
-          header: true,
-          skipEmptyLines: true,
-          complete: (results) => {
-            setLoading(false);
-            if (results.errors.length > 0 && results.data.length === 0) {
-               onError("Failed to parse CSV file.");
-               return;
-            }
-            onCsvLoaded(results.data as any[], file.name);
-          },
-          error: (err) => {
-             setLoading(false);
-             onError("Error reading CSV file: " + err.message);
-          }
-        });
+      if (!isCsv && !isJson && !isKml && !isKmz && !isZip) {
+        setLoading(false);
+        onError("Unsupported file format. Please upload GeoJSON, CSV, KML/KMZ, or Zip (Shapefile).");
         return;
       }
 
-      if (isJson) {
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          try {
-            const json = JSON.parse(event.target?.result as string);
-            validateAndLoad(json, file.name);
-          } catch (err) {
-            setLoading(false);
-            onError("Failed to parse GeoJSON.");
-          }
-        };
-        reader.readAsText(file);
-        return;
-      }
+      const worker = new Worker(new URL('../workers/fileParseWorker.ts', import.meta.url), {
+        type: 'module',
+      });
 
-      if (isKml) {
-        const reader = new FileReader();
-        reader.onload = (event) => {
-           try {
-              const str = event.target?.result as string;
-              const parser = new DOMParser();
-              const xmlDoc = parser.parseFromString(str, "text/xml");
-              const geojson = kml(xmlDoc);
-              validateAndLoad(geojson, file.name);
-           } catch (err) {
-              setLoading(false);
-              onError("Failed to parse KML file.");
-           }
-        };
-        reader.readAsText(file);
-        return;
-      }
+      worker.onmessage = (event: MessageEvent<FileParseWorkerOutMessage>) => {
+        worker.terminate();
+        setLoading(false);
 
-      if (isKmz) {
-          const reader = new FileReader();
-          reader.onload = async (event) => {
-            try {
-                const buffer = event.target?.result as ArrayBuffer;
-                const zip = await JSZip.loadAsync(buffer);
-
-                const kmlFilename = Object.keys(zip.files).find(f => f.toLowerCase().endsWith('.kml'));
-
-                if (!kmlFilename) {
-                    throw new Error("No KML file found inside KMZ archive.");
-                }
-
-                const kmlFile = zip.file(kmlFilename);
-                if (!kmlFile) throw new Error("Could not access KML file.");
-
-                const kmlString = await kmlFile.async("string");
-
-                const parser = new DOMParser();
-                const xmlDoc = parser.parseFromString(kmlString, "text/xml");
-                const geojson = kml(xmlDoc);
-                validateAndLoad(geojson, file.name);
-
-            } catch (err: any) {
-                setLoading(false);
-                onError("Failed to parse KMZ file: " + err.message);
-            }
-          };
-          reader.readAsArrayBuffer(file);
+        if (event.data.type === 'PARSE_ERROR') {
+          onError(event.data.payload.message);
           return;
-      }
+        }
 
-      if (isZip) {
-         const reader = new FileReader();
-         reader.onload = async (event) => {
-             try {
-                 const buffer = event.target?.result as ArrayBuffer;
-                 const geojson = await shp(buffer);
+        if (event.data.payload.kind === 'csv') {
+          onCsvLoaded(event.data.payload.data, file.name);
+          return;
+        }
 
-                 let finalFC: FeatureCollection = { type: 'FeatureCollection', features: [] };
+        validateAndLoad(event.data.payload.data, file.name);
+      };
 
-                 if (Array.isArray(geojson)) {
-                     geojson.forEach(g => {
-                         if (g.type === 'FeatureCollection') {
-                             finalFC.features.push(...g.features);
-                         }
-                     });
-                 } else {
-                     finalFC = geojson;
-                 }
+      worker.onerror = () => {
+        worker.terminate();
+        setLoading(false);
+        onError('Failed to parse file in worker.');
+      };
 
-                 validateAndLoad(finalFC, file.name);
-             } catch (err: any) {
-                 console.error(err);
-                 setLoading(false);
-                 onError("Failed to parse Shapefile (Zip): " + (err.message || "Unknown error"));
-             }
-         };
-         reader.readAsArrayBuffer(file);
-         return;
-      }
-
-      setLoading(false);
-      onError("Unsupported file format. Please upload GeoJSON, CSV, KML/KMZ, or Zip (Shapefile).");
+      const message: FileParseWorkerInMessage = {
+        type: 'PARSE_FILE',
+        payload: { file },
+      };
+      worker.postMessage(message);
     } catch (e: any) {
         setLoading(false);
         onError("Unexpected error: " + e.message);
@@ -197,19 +118,16 @@ export const FileUpload: React.FC<Props> = ({ onDataLoaded, onCsvLoaded, onError
 
   const validateAndLoad = (json: any, fileName: string) => {
       if (!json.type) {
-        setLoading(false);
         throw new Error("Invalid format: Missing GeoJSON type");
       }
 
       const fc = json.type === 'Feature' ? { type: 'FeatureCollection', features: [json] } : json;
 
       if (fc.type !== 'FeatureCollection') {
-          setLoading(false);
           onError("Invalid GeoJSON: Must be a FeatureCollection.");
           return;
       }
 
-      setLoading(false);
       onDataLoaded(fc, fileName);
   };
 
