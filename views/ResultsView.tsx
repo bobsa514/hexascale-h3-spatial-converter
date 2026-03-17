@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { HexMap } from '../components/HexMap';
 import { DataPreviewModal } from '../components/DataPreviewModal';
-import { HexResult, Layer } from '../types';
+import { HexResult, Layer, ColumnType, GeoType } from '../types';
 import { RESULT_PREVIEW_ROW_LIMIT } from '../utils/constants';
 import { Download, FileText, AlertTriangle, MapIcon } from 'lucide-react';
 
@@ -14,6 +14,14 @@ interface Props {
   onBackToSetup: () => void;
   onStartOver: () => void;
 }
+
+const geometryMatchesLayer = (geometryType: string | undefined, layerType: GeoType): boolean => {
+  if (!geometryType) return false;
+  if (layerType === GeoType.POINT) return geometryType === 'Point' || geometryType === 'MultiPoint';
+  if (layerType === GeoType.LINE) return geometryType === 'LineString' || geometryType === 'MultiLineString';
+  if (layerType === GeoType.POLYGON) return geometryType === 'Polygon' || geometryType === 'MultiPolygon';
+  return false;
+};
 
 export const ResultsView: React.FC<Props> = ({
   results,
@@ -55,6 +63,59 @@ export const ResultsView: React.FC<Props> = ({
     return typeMap;
   }, [allColumns, results]);
 
+  const qaSummary = useMemo(() => {
+    const mixedGeometryLayers = layers.filter(layer => layer.mixedGeometryWarning).length;
+    const configuredColumns = layers.reduce((sum, layer) => sum + layer.activeColumns.length, 0);
+    const processingModes = {
+      exactArea: 0,
+      approximate: 0,
+    };
+    const extensiveChecks: Array<{
+      outputName: string;
+      inputTotal: number;
+      outputTotal: number;
+      relativeErrorPct: number;
+    }> = [];
+
+    for (const layer of layers) {
+      for (const col of layer.activeColumns) {
+        if (col.type !== ColumnType.EXTENSIVE) continue;
+
+        if (layer.geoType === GeoType.POLYGON) {
+          if (col.extensiveMode === 'precise') processingModes.exactArea++;
+          else processingModes.approximate++;
+        }
+
+        const inputTotal = layer.data.features.reduce((sum, feature) => {
+          if (!geometryMatchesLayer(feature.geometry?.type, layer.geoType)) return sum;
+          const rawVal = parseFloat(feature.properties?.[col.name] || 0);
+          return Number.isFinite(rawVal) ? sum + rawVal : sum;
+        }, 0);
+        const outputTotal = results.reduce((sum, row) => {
+          const rawVal = parseFloat(row[col.outputName] || 0);
+          return Number.isFinite(rawVal) ? sum + rawVal : sum;
+        }, 0);
+        const relativeErrorPct = inputTotal === 0
+          ? 0
+          : (Math.abs(outputTotal - inputTotal) / Math.abs(inputTotal)) * 100;
+
+        extensiveChecks.push({
+          outputName: col.outputName,
+          inputTotal,
+          outputTotal,
+          relativeErrorPct,
+        });
+      }
+    }
+
+    return {
+      mixedGeometryLayers,
+      configuredColumns,
+      processingModes,
+      extensiveChecks,
+    };
+  }, [layers, results]);
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-[calc(100vh-140px)] animate-in fade-in zoom-in-95 duration-500">
       {/* Results Sidebar */}
@@ -80,6 +141,49 @@ export const ResultsView: React.FC<Props> = ({
               </ul>
             </div>
           )}
+
+          <div className="mb-4 p-4 bg-gray-950/70 border border-gray-800 rounded-lg">
+            <div className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">QA Summary</div>
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <div className="p-2 bg-gray-900 rounded border border-gray-800">
+                <div className="text-[10px] uppercase text-gray-500">Layers</div>
+                <div className="text-lg font-semibold text-white">{layers.length}</div>
+              </div>
+              <div className="p-2 bg-gray-900 rounded border border-gray-800">
+                <div className="text-[10px] uppercase text-gray-500">Columns</div>
+                <div className="text-lg font-semibold text-white">{qaSummary.configuredColumns}</div>
+              </div>
+              <div className="p-2 bg-gray-900 rounded border border-gray-800">
+                <div className="text-[10px] uppercase text-gray-500">Warnings</div>
+                <div className="text-lg font-semibold text-white">{warnings.length}</div>
+              </div>
+              <div className="p-2 bg-gray-900 rounded border border-gray-800">
+                <div className="text-[10px] uppercase text-gray-500">Mixed Geometry</div>
+                <div className="text-lg font-semibold text-white">{qaSummary.mixedGeometryLayers}</div>
+              </div>
+            </div>
+            <div className="text-xs text-gray-400 mb-3">
+              Polygon extensive modes: {qaSummary.processingModes.exactArea} exact area, {qaSummary.processingModes.approximate} approximate.
+            </div>
+            {qaSummary.extensiveChecks.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-[10px] uppercase tracking-wider text-gray-500">Conservation Checks</div>
+                {qaSummary.extensiveChecks.map(check => (
+                  <div key={check.outputName} className="p-2 bg-gray-900 rounded border border-gray-800">
+                    <div className="flex items-center justify-between gap-3 text-sm">
+                      <span className="font-mono text-blue-300">{check.outputName}</span>
+                      <span className={`text-xs ${check.relativeErrorPct <= 1 ? 'text-green-400' : 'text-yellow-400'}`}>
+                        delta {check.relativeErrorPct.toFixed(2)}%
+                      </span>
+                    </div>
+                    <div className="mt-1 text-xs text-gray-500">
+                      input {check.inputTotal.toFixed(2)} | output {check.outputTotal.toFixed(2)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           <div className="space-y-3">
             <button
