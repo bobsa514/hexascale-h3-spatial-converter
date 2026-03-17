@@ -1,0 +1,19 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "name": "TestZone", "population": 10000, "median_income": 75000 },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-122.43, 37.77],
+          [-122.41, 37.77],
+          [-122.41, 37.79],
+          [-122.43, 37.79],
+          [-122.43, 37.77]
+        ]]
+      }
+    }
+  ]
+}
