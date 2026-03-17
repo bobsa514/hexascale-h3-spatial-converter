@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { ColumnConfig, ColumnType, PointAggregation, GeoType, Layer } from '../types';
-import { getGeoType } from '../utils/geoType';
+import { getGeoType, getGeoTypeDetailed } from '../utils/geoType';
 import { analyzeColumnsLocally } from '../services/columnInference';
 import { FeatureCollection } from 'geojson';
 import { v4 as uuidv4 } from 'uuid';
@@ -27,8 +27,14 @@ export function useLayerManager() {
     setAnalyzeError(null);
 
     try {
-      const type = getGeoType(data);
+      const { primaryType: type, skippedCount, counts } = getGeoTypeDetailed(data);
       const newLayerId = uuidv4();
+
+      let mixedGeometryWarning: string | undefined;
+      if (skippedCount > 0) {
+        const detail = Object.entries(counts).map(([t, c]) => `${c} ${t}`).join(', ');
+        mixedGeometryWarning = `Will process ${type} features. Dataset contains: ${detail}. ${skippedCount} feature(s) will be skipped.`;
+      }
 
       // Scan first N features for the union of all property keys
       const SCAN_LIMIT = 50;
@@ -87,6 +93,7 @@ export function useLayerManager() {
         availableAttributes,
         activeColumns: restoredColumns,
         aiSuggestions,
+        mixedGeometryWarning,
       };
 
       setLayers(prev => [...prev, newLayer]);

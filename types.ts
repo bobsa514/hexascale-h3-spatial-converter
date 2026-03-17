@@ -54,4 +54,5 @@ export interface Layer {
   availableAttributes: string[];
   activeColumns: ColumnConfig[];
   aiSuggestions: Record<string, { type: ColumnType, aggregation: PointAggregation }>;
+  mixedGeometryWarning?: string;
 }
