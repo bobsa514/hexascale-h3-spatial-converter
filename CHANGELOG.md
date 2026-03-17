@@ -1,5 +1,28 @@
 # Changelog
 
+## 2026-03-17 — Correctness & Method Alignment
+
+### Fixed
+- **Polygon fast mode conservation** — Fast extensive mode now conserves totals exactly (was 13% over-count). Uses `1/N` cell share instead of `polygonArea/hexArea` ratio.
+- **Line length-weighted distribution** — Line extensive values now distribute by sample-point density per cell (length-weighted), not equal `1/cellCount` split. Intensive uses length-weighted average.
+
+### Added
+- **Categorical column type** — New `Categorical (Text)` type for text/string attributes. Uses "largest overlap wins" strategy for polygons (precise mode), highest line-length share for lines, first value for points.
+- **Multi-ring aggregation** — Select multiple ring sizes (1, 2, 3, 6) per column. Generates `_ring1`, `_ring3` etc. suffix columns for neighborhood analysis at different spatial scales. Single-ring backward compatible.
+- **Mixed geometry warning at upload** — Detects mixed geometry types when file is loaded and shows warning in the layer card (setup view), not just in results.
+- **QA summary in results** — Results page now shows processing summary: layer count, column count, warnings, conservation checks per extensive column with delta percentages.
+- **Bbox pre-filter for precise mode** — Skips `turf.intersect()` for hex cells whose bounding box doesn't overlap the source polygon. Significant speedup for large polygons.
+- **File parsing Web Worker** — CSV, GeoJSON, KML, KMZ, and Shapefile parsing now runs off the main thread. Large file uploads no longer freeze the UI.
+- **Benchmark suite** — `npm run bench` runs performance comparison of Approximate vs Exact Area modes.
+- **Invariant tests** — Polygon extensive conservation (fast + precise), line extensive conservation, intensive stability across overlapping polygons, mixed geometry warnings.
+
+### Changed
+- **Default polygon mode → Exact Area** — New polygon extensive columns default to precise (intersection-based) mode instead of approximate.
+- **Mode labels renamed** — "Fast" → "Approximate (Faster)", "Precise" → "Exact Area". Help text explains the tradeoff.
+- **Ring UI → multi-toggle buttons** — Ring aggregation changed from single dropdown to multi-select toggle buttons.
+
+---
+
 ## 2026-03-17
 
 ### Fixed
