@@ -12,6 +12,7 @@ interface Props {
 
 export const LayerConfigModal: React.FC<Props> = ({ layer, allOutputNames, onUpdate, onClose }) => {
   const [selectedAttr, setSelectedAttr] = useState('');
+  const defaultPolygonExtensiveMode: AreaInterpolationMode = 'precise';
 
   // Output names from OTHER layers: remove exactly one occurrence per current-layer column
   // to correctly detect cross-layer conflicts
@@ -52,7 +53,7 @@ export const LayerConfigModal: React.FC<Props> = ({ layer, allOutputNames, onUpd
       outputName,
       sampleValue: null,
       type,
-      extensiveMode: 'fast',
+      extensiveMode: layer.geoType === GeoType.POLYGON ? defaultPolygonExtensiveMode : 'fast',
       pointAggregation: suggestion?.aggregation || PointAggregation.COUNT,
       ringSize: 0
     };
@@ -213,7 +214,10 @@ export const LayerConfigModal: React.FC<Props> = ({ layer, allOutputNames, onUpd
                                           } else if (layer.geoType === GeoType.POLYGON && v === 'EXTENSIVE_FAST') {
                                             updateColumn(col.id, { type: ColumnType.EXTENSIVE, extensiveMode: 'fast' as AreaInterpolationMode });
                                           } else {
-                                            updateColumn(col.id, { type: v as ColumnType, extensiveMode: 'fast' as AreaInterpolationMode });
+                                            updateColumn(col.id, {
+                                              type: v as ColumnType,
+                                              extensiveMode: layer.geoType === GeoType.POLYGON ? defaultPolygonExtensiveMode : 'fast'
+                                            });
                                           }
                                         }}
                                     >
@@ -222,8 +226,8 @@ export const LayerConfigModal: React.FC<Props> = ({ layer, allOutputNames, onUpd
                                         <option value={ColumnType.INTENSIVE}>Intensive (Avg)</option>
                                         {layer.geoType === GeoType.POLYGON ? (
                                           <>
-                                            <option value="EXTENSIVE_FAST">Extensive (Fast)</option>
-                                            <option value="EXTENSIVE_PRECISE">Extensive (Precise)</option>
+                                            <option value="EXTENSIVE_FAST">Extensive (Approximate, Faster)</option>
+                                            <option value="EXTENSIVE_PRECISE">Extensive (Exact Area)</option>
                                           </>
                                         ) : (
                                           <option value={ColumnType.EXTENSIVE}>Extensive (Sum)</option>
@@ -231,7 +235,7 @@ export const LayerConfigModal: React.FC<Props> = ({ layer, allOutputNames, onUpd
                                     </select>
                                     {layer.geoType === GeoType.POLYGON && (
                                       <div className="text-[10px] text-gray-500 mt-1 leading-snug">
-                                        Fast: approximate (uniform split, may not conserve totals exactly). Precise: hex∩polygon intersection (conserves totals).
+                                        Approximate: equal split across touched hexes, conservative but less spatially accurate. Exact Area: hex∩polygon intersection, conservative and slower.
                                       </div>
                                     )}
                                 </div>

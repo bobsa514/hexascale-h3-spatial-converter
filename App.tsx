@@ -10,7 +10,7 @@ import { downloadConfig, deserializeConfig } from './utils/projectConfig';
 import { Map as MapIcon, Loader2, AlertTriangle, X as XIcon } from 'lucide-react';
 import { getGeoType } from './utils/geoType';
 import { analyzeColumnsLocally } from './services/columnInference';
-import { ColumnType, PointAggregation, Layer } from './types';
+import { ColumnType, PointAggregation, Layer, GeoType } from './types';
 import type { FeatureCollection } from 'geojson';
 import type { AreaInterpolationMode } from './types';
 import sampleData from './assets/sample-data.json';
@@ -93,7 +93,7 @@ const App: React.FC = () => {
         outputName: s.name!,
         sampleValue: (props as Record<string, unknown>)[s.name!],
         type: s.type || ColumnType.EXTENSIVE,
-        extensiveMode: 'fast' as AreaInterpolationMode,
+        extensiveMode: type === GeoType.POLYGON ? 'precise' as AreaInterpolationMode : 'fast' as AreaInterpolationMode,
         pointAggregation: s.pointAggregation || PointAggregation.COUNT,
         ringSize: 0,
       }));
