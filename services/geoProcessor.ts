@@ -134,11 +134,11 @@ const processPolygons = (
 
     const uniqueCells = Array.from(new Set(allCells));
     const preciseShareByCell = new Map<string, number>();
-    let fastShare = 0;
-    if (hasExtensive && polygonAreaM2 > 0) {
-        const areaScale = Math.max(1, polygonAreaM2 / hexAreaM2);
-        fastShare = 1 / areaScale;
-    }
+    // Conservative fast share: distribute equally across actual cells
+    // Guarantees sum(shares) === 1.0 regardless of polygon shape
+    const fastShare = hasExtensive && uniqueCells.length > 0
+        ? 1 / uniqueCells.length
+        : 0;
 
     const canUsePreciseWeight = hasPreciseExtensive && polygonAreaM2 > 0;
     const polygonParts = canUsePreciseWeight
