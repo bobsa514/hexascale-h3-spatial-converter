@@ -26,9 +26,12 @@ export const getGeoTypeDetailed = (fc: FeatureCollection): GeoTypeResult => {
   const counts: Record<string, number> = {};
   let nullCount = 0;
   for (const f of fc.features) {
-    const gt = f.geometry?.type || 'null';
-    if (gt === 'null') nullCount++;
-    else counts[gt] = (counts[gt] || 0) + 1;
+    if (!f.geometry) {
+      nullCount++;
+      continue;
+    }
+    const gt = f.geometry.type;
+    counts[gt] = (counts[gt] || 0) + 1;
   }
 
   const primaryType = getGeoType(fc);

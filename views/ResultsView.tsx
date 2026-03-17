@@ -37,6 +37,24 @@ export const ResultsView: React.FC<Props> = ({
     return Array.from(keySet);
   }, [results]);
 
+  const columnTypes = useMemo(() => {
+    const typeMap = new Map<string, 'Number' | 'Text'>();
+    for (const col of allColumns) {
+      for (const row of results) {
+        const value = row[col];
+        if (value === null || value === undefined) continue;
+        if (typeof value === 'number' && Number.isFinite(value)) {
+          typeMap.set(col, 'Number');
+        } else {
+          typeMap.set(col, 'Text');
+        }
+        break;
+      }
+      if (!typeMap.has(col)) typeMap.set(col, 'Text');
+    }
+    return typeMap;
+  }, [allColumns, results]);
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-[calc(100vh-140px)] animate-in fade-in zoom-in-95 duration-500">
       {/* Results Sidebar */}
@@ -91,7 +109,7 @@ export const ResultsView: React.FC<Props> = ({
             {allColumns.map(k => (
               <div key={k} className="flex items-center justify-between p-2 bg-gray-900 rounded border border-gray-800 text-sm">
                 <span className="font-mono text-blue-300">{k}</span>
-                <span className="text-xs text-gray-600">Float</span>
+                <span className="text-xs text-gray-600">{columnTypes.get(k)}</span>
               </div>
             ))}
           </div>

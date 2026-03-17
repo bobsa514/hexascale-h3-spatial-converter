@@ -18,7 +18,14 @@ const applyRingAggregation = (
     data: HexResult[],
     columns: ColumnConfig[]
 ): HexResult[] => {
-    const colsToAggregate = columns.filter(c => c.ringSize && c.ringSize > 0 && c.type !== ColumnType.ID && c.type !== ColumnType.IGNORE);
+    const colsToAggregate = columns.filter(
+        c =>
+            c.ringSize &&
+            c.ringSize > 0 &&
+            c.type !== ColumnType.ID &&
+            c.type !== ColumnType.CATEGORICAL &&
+            c.type !== ColumnType.IGNORE
+    );
 
     if (colsToAggregate.length === 0) {
         return data;
@@ -195,6 +202,19 @@ const processPolygons = (
                     return;
                 }
 
+                if (col.type === ColumnType.CATEGORICAL) {
+                    // Largest-overlap wins: track weight per source, keep highest
+                    const weight = canUsePreciseWeight
+                        ? (preciseShareByCell.get(cellId) || 0)
+                        : fastShare;
+                    const currentWeight = entry.data[`__cat_weight_${targetField}`] || 0;
+                    if (weight > currentWeight || entry.data[targetField] === undefined) {
+                        entry.data[targetField] = props[col.name];
+                        entry.data[`__cat_weight_${targetField}`] = weight;
+                    }
+                    return;
+                }
+
                 const rawVal = parseFloat(props[col.name] || 0);
                 if (isNaN(rawVal)) {
                     return;
@@ -234,6 +254,10 @@ const processPolygons = (
       const weight = val.intensiveWeight[targetField] || 0;
       output[targetField] = weight > 0 ? sum / weight : 0;
     });
+    // Remove internal categorical weight tracking keys
+    for (const key of Object.keys(output)) {
+      if (key.startsWith('__cat_weight_')) delete output[key];
+    }
     return output;
   });
 };
@@ -297,6 +321,12 @@ const processPoints = (
 
             if (col.type === ColumnType.ID) {
                 // Preserve first ID value (consistent with polygon handling)
+                row[targetField] = propsList[0]?.[col.name] ?? '';
+                return;
+            }
+
+            if (col.type === ColumnType.CATEGORICAL) {
+                // For points: take the first value in this hex bucket
                 row[targetField] = propsList[0]?.[col.name] ?? '';
                 return;
             }
@@ -413,6 +443,16 @@ const processLines = (
 
              if (col.type === ColumnType.ID) {
                  row[targetField] = entries[0]?.props?.[col.name];
+                 return;
+             }
+
+             if (col.type === ColumnType.CATEGORICAL) {
+                 // Take value from entry with highest share (most line length in this cell)
+                 let bestEntry = entries[0];
+                 for (const e of entries) {
+                     if ((e.share || 0) > (bestEntry?.share || 0)) bestEntry = e;
+                 }
+                 row[targetField] = bestEntry?.props?.[col.name];
                  return;
              }
 

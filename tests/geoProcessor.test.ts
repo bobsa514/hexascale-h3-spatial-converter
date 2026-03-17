@@ -376,3 +376,78 @@ describe('Line Extensive Conservation', () => {
     });
   });
 });
+
+describe('Categorical Column Type', () => {
+  it('assigns categorical value from polygon with highest weight (precise mode)', async () => {
+    const fc: FeatureCollection = {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          properties: { zone: 'residential', population: 500 },
+          geometry: {
+            type: 'Polygon',
+            coordinates: [[[-122.43, 37.77], [-122.415, 37.77], [-122.415, 37.79], [-122.43, 37.79], [-122.43, 37.77]]]
+          }
+        },
+        {
+          type: 'Feature',
+          properties: { zone: 'commercial', population: 800 },
+          geometry: {
+            type: 'Polygon',
+            coordinates: [[[-122.425, 37.77], [-122.41, 37.77], [-122.41, 37.79], [-122.425, 37.79], [-122.425, 37.77]]]
+          }
+        }
+      ]
+    };
+
+    const result = await processGeoJsonToH3(fc, {
+      h3Resolution: 8,
+      columns: [{
+        id: '1', name: 'zone', outputName: 'zone',
+        sampleValue: 'residential', type: ColumnType.CATEGORICAL,
+        extensiveMode: 'precise', ringSize: 0,
+      }],
+    });
+
+    result.results.forEach(r => {
+      expect(typeof r.zone).toBe('string');
+      expect(['residential', 'commercial']).toContain(r.zone);
+    });
+  });
+
+  it('handles categorical columns for points (first value)', async () => {
+    const result = await processGeoJsonToH3(points, {
+      h3Resolution: 8,
+      columns: [{
+        id: '1', name: 'category', outputName: 'point_category',
+        sampleValue: 'A', type: ColumnType.CATEGORICAL,
+        pointAggregation: PointAggregation.COUNT,
+        ringSize: 0,
+      }],
+    });
+
+    result.results.forEach(r => {
+      expect(r.point_category).toBeDefined();
+      expect(typeof r.point_category).toBe('string');
+    });
+  });
+
+  it('handles categorical columns for lines (highest share wins)', async () => {
+    const result = await processGeoJsonToH3(conservationLn, {
+      h3Resolution: 8,
+      columns: [{
+        id: '1',
+        name: 'road_id',
+        outputName: 'road_id',
+        sampleValue: 'TEST1',
+        type: ColumnType.CATEGORICAL,
+        ringSize: 0,
+      }],
+    });
+
+    result.results.forEach(r => {
+      expect(r.road_id).toBe('TEST1');
+    });
+  });
+});

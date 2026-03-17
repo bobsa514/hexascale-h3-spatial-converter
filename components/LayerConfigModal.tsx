@@ -218,6 +218,7 @@ export const LayerConfigModal: React.FC<Props> = ({ layer, allOutputNames, onUpd
                                         }}
                                     >
                                         <option value={ColumnType.ID}>ID</option>
+                                        <option value={ColumnType.CATEGORICAL}>Categorical (Text)</option>
                                         <option value={ColumnType.INTENSIVE}>Intensive (Avg)</option>
                                         {layer.geoType === GeoType.POLYGON ? (
                                           <>
@@ -234,7 +235,7 @@ export const LayerConfigModal: React.FC<Props> = ({ layer, allOutputNames, onUpd
                                       </div>
                                     )}
                                 </div>
-                                {layer.geoType === GeoType.POINT && (
+                                {layer.geoType === GeoType.POINT && col.type !== ColumnType.CATEGORICAL && col.type !== ColumnType.ID && (
                                     <div>
                                         <label className="text-[10px] uppercase text-gray-500 font-bold tracking-wider">Aggregation</label>
                                         <select
@@ -252,7 +253,7 @@ export const LayerConfigModal: React.FC<Props> = ({ layer, allOutputNames, onUpd
                                 )}
                             </div>
 
-                            {col.type !== ColumnType.ID && (
+                            {col.type !== ColumnType.ID && col.type !== ColumnType.CATEGORICAL && (
                                 <div>
                                     <label className="text-[10px] uppercase text-gray-500 font-bold tracking-wider flex items-center">
                                         <CircleDot className="w-3 h-3 mr-1 text-purple-400" /> Ring Aggregation

@@ -74,16 +74,13 @@ export function useLayerManager() {
       }
 
       // Check for a matching pending config (from a loaded project file)
-      let restoredColumns: ColumnConfig[] = [];
-      setPendingConfigs(prev => {
-        const matchIdx = prev.findIndex(pc => pc.fileName === name);
-        if (matchIdx >= 0) {
-          restoredColumns = prev[matchIdx]!.activeColumns;
-          // Remove matched config
-          return prev.filter((_, i) => i !== matchIdx);
-        }
-        return prev;
-      });
+      const matchedConfig = pendingConfigs.find(
+        pc => pc.fileName === name && pc.geoType === type
+      );
+      const restoredColumns = matchedConfig?.activeColumns ?? [];
+      if (matchedConfig) {
+        setPendingConfigs(prev => prev.filter(pc => pc !== matchedConfig));
+      }
 
       const newLayer: Layer = {
         id: newLayerId,
@@ -106,7 +103,7 @@ export function useLayerManager() {
     } finally {
       setAnalyzing(false);
     }
-  }, []);
+  }, [pendingConfigs]);
 
   const handleCsvLoaded = useCallback((data: any[], name: string) => {
     setTempCsvData({ data, name });

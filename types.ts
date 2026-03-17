@@ -11,6 +11,7 @@ export enum ColumnType {
   INTENSIVE = 'Intensive', // e.g., Mean Income (average)
   EXTENSIVE = 'Extensive', // e.g., Population (sum/distribute)
   ID = 'ID', // Keep as identifier
+  CATEGORICAL = 'Categorical', // e.g., Zone name (largest overlap wins)
   IGNORE = 'Ignore' // Do not include
 }
 

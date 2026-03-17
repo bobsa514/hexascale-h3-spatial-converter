@@ -49,7 +49,7 @@ const classifyType = (tokens: string[], key: string, numericHint: boolean): Colu
   ];
   if (hasAnyToken(tokens, extensiveTokens)) return ColumnType.EXTENSIVE;
 
-  return numericHint ? ColumnType.INTENSIVE : ColumnType.ID;
+  return numericHint ? ColumnType.INTENSIVE : ColumnType.CATEGORICAL;
 };
 
 const classifyPointAggregation = (tokens: string[], key: string, numericHint: boolean): PointAggregation => {
