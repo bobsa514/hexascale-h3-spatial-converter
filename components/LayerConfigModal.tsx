@@ -13,10 +13,16 @@ interface Props {
 export const LayerConfigModal: React.FC<Props> = ({ layer, allOutputNames, onUpdate, onClose }) => {
   const [selectedAttr, setSelectedAttr] = useState('');
 
-  // Output names from OTHER layers (excluding this layer's own)
-  const otherLayerOutputNames = allOutputNames.filter(
-    name => !layer.activeColumns.some(c => c.outputName === name)
-  );
+  // Output names from OTHER layers: remove exactly one occurrence per current-layer column
+  // to correctly detect cross-layer conflicts
+  const otherLayerOutputNames = (() => {
+    const remaining = [...allOutputNames];
+    for (const col of layer.activeColumns) {
+      const idx = remaining.indexOf(col.outputName);
+      if (idx >= 0) remaining.splice(idx, 1);
+    }
+    return remaining;
+  })();
 
   const addColumn = () => {
     if (!selectedAttr) return;
@@ -69,6 +75,8 @@ export const LayerConfigModal: React.FC<Props> = ({ layer, allOutputNames, onUpd
       activeColumns: layer.activeColumns.filter(c => c.id !== colId)
     });
   };
+
+  const isOutputNameEmpty = (outputName: string): boolean => !outputName.trim();
 
   const isOutputNameConflict = (outputName: string, currentColId: string): boolean => {
     const otherInLayer = layer.activeColumns.some(c => c.id !== currentColId && c.outputName === outputName);
@@ -140,8 +148,10 @@ export const LayerConfigModal: React.FC<Props> = ({ layer, allOutputNames, onUpd
              ) : (
                layer.activeColumns.map((col) => {
                  const hasConflict = isOutputNameConflict(col.outputName, col.id);
+                 const isEmpty = isOutputNameEmpty(col.outputName);
+                 const hasError = hasConflict || isEmpty;
                  return (
-                 <div key={col.id} className={`bg-gray-800 rounded-lg border p-4 relative group hover:border-gray-600 transition-colors ${hasConflict ? 'border-orange-600/50' : 'border-gray-700'}`}>
+                 <div key={col.id} className={`bg-gray-800 rounded-lg border p-4 relative group hover:border-gray-600 transition-colors ${hasError ? 'border-orange-600/50' : 'border-gray-700'}`}>
 
                     <button
                       onClick={() => removeColumn(col.id)}
@@ -163,15 +173,20 @@ export const LayerConfigModal: React.FC<Props> = ({ layer, allOutputNames, onUpd
                             <div>
                                 <label className="text-[10px] uppercase text-gray-500 font-bold tracking-wider flex items-center gap-1">
                                   Output Name (CSV Header)
-                                  {hasConflict && <AlertCircle className="w-3 h-3 text-orange-400" />}
+                                  {hasError && <AlertCircle className="w-3 h-3 text-orange-400" />}
                                 </label>
                                 <input
                                   type="text"
                                   value={col.outputName}
                                   onChange={(e) => updateColumn(col.id, { outputName: e.target.value })}
-                                  className={`w-full bg-gray-900 border rounded text-sm px-2 py-1.5 focus:border-blue-500 outline-none ${hasConflict ? 'border-orange-500 text-orange-200' : 'border-gray-600 text-blue-200'}`}
+                                  className={`w-full bg-gray-900 border rounded text-sm px-2 py-1.5 focus:border-blue-500 outline-none ${hasError ? 'border-orange-500 text-orange-200' : 'border-gray-600 text-blue-200'}`}
                                 />
-                                {hasConflict && (
+                                {isEmpty && (
+                                  <div className="text-[10px] text-orange-400 mt-1">
+                                    Output name cannot be empty
+                                  </div>
+                                )}
+                                {hasConflict && !isEmpty && (
                                   <div className="text-[10px] text-orange-400 mt-1">
                                     This output name conflicts with another column
                                   </div>
@@ -215,7 +230,7 @@ export const LayerConfigModal: React.FC<Props> = ({ layer, allOutputNames, onUpd
                                     </select>
                                     {layer.geoType === GeoType.POLYGON && (
                                       <div className="text-[10px] text-gray-500 mt-1 leading-snug">
-                                        Fast: avg hex area. Precise: hex∩polygon area share.
+                                        Fast: approximate (uniform split, may not conserve totals exactly). Precise: hex∩polygon intersection (conserves totals).
                                       </div>
                                     )}
                                 </div>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { HexMap } from '../components/HexMap';
 import { DataPreviewModal } from '../components/DataPreviewModal';
 import { HexResult, Layer } from '../types';
@@ -25,6 +25,17 @@ export const ResultsView: React.FC<Props> = ({
   onStartOver,
 }) => {
   const [showPreview, setShowPreview] = useState(false);
+
+  // Collect union of all keys across all result rows (not just the first row)
+  const allColumns = useMemo(() => {
+    const keySet = new Set<string>();
+    for (const row of results) {
+      for (const k of Object.keys(row)) {
+        if (k !== 'hexId') keySet.add(k);
+      }
+    }
+    return Array.from(keySet);
+  }, [results]);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-[calc(100vh-140px)] animate-in fade-in zoom-in-95 duration-500">
@@ -77,7 +88,7 @@ export const ResultsView: React.FC<Props> = ({
         <div className="bg-gray-900/30 border border-gray-800 rounded-xl p-4 flex-1">
           <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4">Output Columns</h3>
           <div className="space-y-2 overflow-y-auto max-h-[300px] custom-scrollbar pr-2">
-            {Object.keys(results[0] || {}).filter(k => k !== 'hexId').map(k => (
+            {allColumns.map(k => (
               <div key={k} className="flex items-center justify-between p-2 bg-gray-900 rounded border border-gray-800 text-sm">
                 <span className="font-mono text-blue-300">{k}</span>
                 <span className="text-xs text-gray-600">Float</span>

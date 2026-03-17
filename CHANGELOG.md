@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-03-17
+
+### Fixed
+- **Line Extensive conservation (P1)** — Extensive values on lines now distribute by `1/cellCount` instead of replicating the full value to every hex. Totals are now conserved.
+- **Point ID column preservation (P2)** — ID columns on point layers are now preserved in output (previously silently dropped)
+- **Result schema completeness (P2)** — Output column list and map color selector now scan all result rows, not just the first. Fixes missing columns in sparse multi-layer merges.
+- **Config load restores settings (P2)** — Loading a saved config now stores layer configurations and auto-applies them when matching files are re-uploaded
+- **Cross-layer name conflict detection (P3)** — Fixed filtering bug that hid cross-layer output name conflicts in the config modal
+- **Point column inference (P3)** — Point data now uses token-based classification (same as polygons) instead of blanket EXTENSIVE for all columns
+- **Preview modal title (P4)** — Now shows actual row count instead of hardcoded "First 5 Rows"
+
+### Added
+- **Mixed geometry warning** — Processing now warns when a FeatureCollection has mixed geometry types, telling users which features will be skipped
+- **Empty output name validation** — Config modal and processing pipeline now block empty/whitespace-only output column names
+- **Attribute scanning** — Available attributes now scanned from up to 50 features (union of all property keys) instead of only the first feature
+- **Fast Extensive UI note** — Config modal now clarifies that Fast mode is approximate and may not conserve totals exactly
+
 ## 2026-03-14
 
 ### Added
