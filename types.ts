@@ -31,7 +31,8 @@ export interface ColumnConfig {
   type: ColumnType; // For Polygons
   extensiveMode?: AreaInterpolationMode; // For Polygon Extensive allocation
   pointAggregation?: PointAggregation; // For Points
-  ringSize?: number; // 0-8 for spatial smoothing/aggregation
+  ringSize?: number; // 0-8 for spatial smoothing/aggregation (single ring, backward compat)
+  ringSizes?: number[]; // Multiple ring sizes for multi-band output (e.g., [1, 3, 6])
 }
 
 export interface ProcessingConfig {

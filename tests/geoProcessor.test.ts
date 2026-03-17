@@ -451,3 +451,58 @@ describe('Categorical Column Type', () => {
     });
   });
 });
+
+describe('Multi-Ring Aggregation', () => {
+  it('generates multiple _ringN columns when ringSizes has multiple entries', async () => {
+    const result = await processGeoJsonToH3(points, {
+      h3Resolution: 8,
+      columns: [
+        {
+          id: '1',
+          name: 'population',
+          outputName: 'population',
+          sampleValue: 100,
+          type: ColumnType.EXTENSIVE,
+          pointAggregation: PointAggregation.SUM,
+          ringSizes: [1, 3],
+          ringSize: 1,
+        },
+      ],
+    });
+
+    expect(result.results.length).toBeGreaterThan(0);
+    // Original column should still exist
+    result.results.forEach(r => {
+      expect(r.population).toBeDefined();
+      // Multi-ring columns should exist
+      expect(typeof r.population_ring1).toBe('number');
+      expect(typeof r.population_ring3).toBe('number');
+      // ring3 should include a wider neighborhood, so >= ring1 for extensive
+      expect(r.population_ring3).toBeGreaterThanOrEqual(r.population_ring1);
+    });
+  });
+
+  it('single ringSize still overwrites the column (backward compat)', async () => {
+    const result = await processGeoJsonToH3(points, {
+      h3Resolution: 8,
+      columns: [
+        {
+          id: '1',
+          name: 'population',
+          outputName: 'population',
+          sampleValue: 100,
+          type: ColumnType.EXTENSIVE,
+          pointAggregation: PointAggregation.SUM,
+          ringSize: 1,
+        },
+      ],
+    });
+
+    expect(result.results.length).toBeGreaterThan(0);
+    result.results.forEach(r => {
+      expect(r.population).toBeDefined();
+      // No _ringN suffix columns should exist
+      expect(r.population_ring1).toBeUndefined();
+    });
+  });
+});

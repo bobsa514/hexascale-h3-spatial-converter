@@ -262,16 +262,36 @@ export const LayerConfigModal: React.FC<Props> = ({ layer, allOutputNames, onUpd
                                     <label className="text-[10px] uppercase text-gray-500 font-bold tracking-wider flex items-center">
                                         <CircleDot className="w-3 h-3 mr-1 text-purple-400" /> Ring Aggregation
                                     </label>
-                                    <select
-                                        className="w-full bg-gray-900 border border-gray-600 rounded text-sm px-2 py-1.5 text-purple-300 outline-none"
-                                        value={col.ringSize || 0}
-                                        onChange={(e) => updateColumn(col.id, { ringSize: parseInt(e.target.value) })}
-                                    >
-                                        <option value={0}>No Ring</option>
-                                        {[1,2,3,4,5,6,7,8].map(r => (
-                                            <option key={r} value={r}>Ring {r} (Neighbors)</option>
-                                        ))}
-                                    </select>
+                                    <div className="flex flex-wrap gap-1 mt-1">
+                                        {[1, 2, 3, 6].map(r => {
+                                            const currentSizes = col.ringSizes?.length ? col.ringSizes : (col.ringSize ? [col.ringSize] : []);
+                                            const isActive = currentSizes.includes(r);
+                                            return (
+                                                <button
+                                                    key={r}
+                                                    onClick={() => {
+                                                        const newSizes = isActive
+                                                            ? currentSizes.filter(s => s !== r)
+                                                            : [...currentSizes, r].sort((a, b) => a - b);
+                                                        updateColumn(col.id, {
+                                                            ringSizes: newSizes,
+                                                            ringSize: newSizes[0] || 0,
+                                                        });
+                                                    }}
+                                                    className={`px-2 py-1 text-xs rounded border transition-colors ${
+                                                        isActive
+                                                            ? 'bg-purple-900/50 border-purple-600 text-purple-300'
+                                                            : 'bg-gray-900 border-gray-700 text-gray-500 hover:border-gray-600'
+                                                    }`}
+                                                >
+                                                    Ring {r}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    <div className="text-[10px] text-gray-500 mt-1 leading-snug">
+                                        Select multiple rings to generate neighborhood columns at different scales (e.g., _ring1, _ring3).
+                                    </div>
                                 </div>
                             )}
                         </div>

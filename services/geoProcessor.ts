@@ -43,19 +43,21 @@ const bboxesOverlap = (a: BBox, b: BBox): boolean =>
   a[0] <= b[2] && a[2] >= b[0] && a[1] <= b[3] && a[3] >= b[1];
 
 // --- Ring Aggregation (Spatial Smoothing) ---
+// Supports single ringSize (backward compat) or multiple ringSizes for multi-band output.
+// Single ring: overwrites the column value with the neighborhood aggregate.
+// Multiple rings: keeps original value AND adds _ring{N} columns for each ring size.
 
 const applyRingAggregation = (
     data: HexResult[],
     columns: ColumnConfig[]
 ): HexResult[] => {
-    const colsToAggregate = columns.filter(
-        c =>
-            c.ringSize &&
-            c.ringSize > 0 &&
+    const colsToAggregate = columns.filter(c => {
+        const sizes = c.ringSizes?.length ? c.ringSizes : (c.ringSize ? [c.ringSize] : []);
+        return sizes.some(s => s > 0) &&
             c.type !== ColumnType.ID &&
             c.type !== ColumnType.CATEGORICAL &&
-            c.type !== ColumnType.IGNORE
-    );
+            c.type !== ColumnType.IGNORE;
+    });
 
     if (colsToAggregate.length === 0) {
         return data;
@@ -68,36 +70,40 @@ const applyRingAggregation = (
         const newRow: HexResult = { ...currentRow };
 
         colsToAggregate.forEach(col => {
-            const k = col.ringSize || 0;
+            const sizes = col.ringSizes?.length ? col.ringSizes : (col.ringSize ? [col.ringSize] : []);
             const targetField = col.outputName;
-
-            const neighbors = h3.gridDisk(currentRow.hexId, k);
-
-            let sum = 0;
-            let count = 0;
-
-            for (const neighborHexId of neighbors) {
-                const neighborData = dataMap.get(neighborHexId);
-                if (neighborData) {
-                    const val = parseFloat(neighborData[targetField]);
-                    if (!isNaN(val)) {
-                        sum += val;
-                        count++;
-                    }
-                }
-            }
+            const isMultiRing = sizes.length > 1;
 
             const isIntensive =
                 col.type === ColumnType.INTENSIVE ||
-                (col.type === 'Aggregated Value' as any) ||
                 col.pointAggregation === PointAggregation.AVERAGE ||
                 col.pointAggregation === PointAggregation.MIN ||
                 col.pointAggregation === PointAggregation.MAX;
 
-            if (isIntensive) {
-                newRow[targetField] = count > 0 ? sum / count : 0;
-            } else {
-                newRow[targetField] = sum;
+            for (const k of sizes) {
+                if (k <= 0) continue;
+
+                // Multi-ring: add suffix. Single ring: overwrite original column.
+                const ringField = isMultiRing ? `${targetField}_ring${k}` : targetField;
+                const neighbors = h3.gridDisk(currentRow.hexId, k);
+
+                let sum = 0;
+                let count = 0;
+
+                for (const neighborHexId of neighbors) {
+                    const neighborData = dataMap.get(neighborHexId);
+                    if (neighborData) {
+                        const val = parseFloat(neighborData[targetField]);
+                        if (!isNaN(val)) {
+                            sum += val;
+                            count++;
+                        }
+                    }
+                }
+
+                newRow[ringField] = isIntensive
+                    ? (count > 0 ? sum / count : 0)
+                    : sum;
             }
         });
 
