@@ -84,6 +84,16 @@ export function useProcessing() {
       return false;
     }
 
+    // Validation: check for empty output names
+    for (const layer of layers) {
+      for (const col of layer.activeColumns) {
+        if (!col.outputName.trim()) {
+          setError(`Empty output name found in layer "${layer.fileName}". Please give every column a name.`);
+          return false;
+        }
+      }
+    }
+
     // Validation: check for duplicate output names across all layers
     const allOutputNames: string[] = [];
     const duplicates: string[] = [];

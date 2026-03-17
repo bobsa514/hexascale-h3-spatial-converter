@@ -74,10 +74,9 @@ export const analyzeColumnsLocally = async (
     const key = tokens.join("_");
     const numericHint = isNumericSample(col.sample);
 
-    const type =
-      geoType === GeoType.POINT
-        ? ColumnType.EXTENSIVE
-        : classifyType(tokens, key, numericHint);
+    // For all geometry types, use token-based classification.
+    // Previously points bypassed classifyType and defaulted everything to EXTENSIVE.
+    const type = classifyType(tokens, key, numericHint);
 
     const pointAggregation = classifyPointAggregation(tokens, key, numericHint);
 

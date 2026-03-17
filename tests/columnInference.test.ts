@@ -114,13 +114,30 @@ describe('analyzeColumnsLocally — false positive regression', () => {
   });
 });
 
-describe('analyzeColumnsLocally — point overrides', () => {
-  it('point geometry overrides type to EXTENSIVE', async () => {
+describe('analyzeColumnsLocally — point classification', () => {
+  it('point geometry uses token-based classification (not blanket EXTENSIVE)', async () => {
+    // "price" matches intensive token list → should be INTENSIVE even for points
     const results = await analyzeColumnsLocally(
       [{ name: 'price', sample: 100 }],
       GeoType.POINT
     );
+    expect(results[0]!.type).toBe(ColumnType.INTENSIVE);
+  });
+
+  it('point "population" is classified as EXTENSIVE', async () => {
+    const results = await analyzeColumnsLocally(
+      [{ name: 'population', sample: 5000 }],
+      GeoType.POINT
+    );
     expect(results[0]!.type).toBe(ColumnType.EXTENSIVE);
+  });
+
+  it('point "county_id" is classified as ID', async () => {
+    const results = await analyzeColumnsLocally(
+      [{ name: 'county_id', sample: 'ABC' }],
+      GeoType.POINT
+    );
+    expect(results[0]!.type).toBe(ColumnType.ID);
   });
 });
 

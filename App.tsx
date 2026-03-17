@@ -62,8 +62,10 @@ const App: React.FC = () => {
         const config = deserializeConfig(evt.target?.result as string);
         setH3Resolution(config.h3Resolution);
         proc.setError(null);
-        // Config loaded — user must re-upload data files
-        alert(`Config loaded: ${config.layers.length} layer(s) at resolution ${config.h3Resolution}. Please re-upload your data files.`);
+        // Store layer configs — they'll auto-apply when matching files are uploaded
+        lm.loadPendingConfigs(config);
+        const fileNames = config.layers.map(l => l.fileName).join(', ');
+        alert(`Config loaded (resolution ${config.h3Resolution}). Please re-upload: ${fileNames}. Column settings will be restored automatically.`);
       } catch (err: any) {
         proc.setError('Failed to load config: ' + err.message);
       }

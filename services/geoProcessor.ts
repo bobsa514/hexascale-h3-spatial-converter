@@ -295,7 +295,11 @@ const processPoints = (
         columns.forEach(col => {
             const targetField = col.outputName;
 
-            if (col.type === ColumnType.ID) return;
+            if (col.type === ColumnType.ID) {
+                // Preserve first ID value (consistent with polygon handling)
+                row[targetField] = propsList[0]?.[col.name] ?? '';
+                return;
+            }
 
             const values = propsList.map(p => parseFloat(p[col.name] || 0)).filter(v => !isNaN(v));
 
@@ -339,7 +343,9 @@ const processLines = (
     warnings: ProcessingWarnings,
     onProgress?: (processed: number, total: number) => void
 ): HexResult[] => {
-    const hexMap = new Map<string, any[]>();
+    // Each entry stores properties + how many cells the source feature touches,
+    // so extensive values can be distributed proportionally (value / cellCount).
+    const hexMap = new Map<string, { props: any; cellCount: number }[]>();
     const total = fc.features.length;
     const step = Math.max(1, Math.floor(total / 200));
     let processed = 0;
@@ -380,9 +386,10 @@ const processLines = (
             }
         });
 
+        const cellCount = featureCells.size;
         featureCells.forEach(hexId => {
             if (!hexMap.has(hexId)) hexMap.set(hexId, []);
-            hexMap.get(hexId)!.push(f.properties);
+            hexMap.get(hexId)!.push({ props: f.properties, cellCount });
         });
 
         processed++;
@@ -393,21 +400,33 @@ const processLines = (
 
     const results: HexResult[] = [];
 
-    hexMap.forEach((propsList, hexId) => {
+    hexMap.forEach((entries, hexId) => {
         const row: any = { hexId };
 
         columns.forEach(col => {
              const targetField = col.outputName;
-             const vals = propsList.map((p:any) => parseFloat(p[col.name] || 0)).filter((v:number) => !isNaN(v));
+
+             if (col.type === ColumnType.ID) {
+                 row[targetField] = entries[0]?.props?.[col.name];
+                 return;
+             }
 
              if (col.type === ColumnType.INTENSIVE) {
-                 const sum = vals.reduce((a:number,b:number) => a+b, 0);
+                 const vals = entries.map(e => parseFloat(e.props[col.name] || 0)).filter(v => !isNaN(v));
+                 const sum = vals.reduce((a, b) => a + b, 0);
                  row[targetField] = vals.length ? sum / vals.length : 0;
              } else if (col.type === ColumnType.EXTENSIVE) {
-                 const sum = vals.reduce((a:number,b:number) => a+b, 0);
+                 // Distribute each feature's value by 1/cellCount to conserve totals
+                 let sum = 0;
+                 for (const e of entries) {
+                     const val = parseFloat(e.props[col.name] || 0);
+                     if (!isNaN(val) && e.cellCount > 0) {
+                         sum += val / e.cellCount;
+                     }
+                 }
                  row[targetField] = sum;
              } else {
-                 row[targetField] = propsList[0]?.[col.name];
+                 row[targetField] = entries[0]?.props?.[col.name];
              }
         });
         results.push(row);
@@ -428,6 +447,23 @@ export const processGeoJsonToH3 = async (
 
   if (!fc || !fc.features || fc.features.length === 0) {
       throw new Error("Feature collection is empty.");
+  }
+
+  // Warn about mixed geometry types — non-matching features are silently skipped by handlers
+  const geomCounts: Record<string, number> = {};
+  for (const f of fc.features) {
+    const gt = f.geometry?.type || 'null';
+    geomCounts[gt] = (geomCounts[gt] || 0) + 1;
+  }
+  const distinctTypes = Object.keys(geomCounts).filter(t => t !== 'null');
+  if (distinctTypes.length > 1) {
+    const detail = distinctTypes.map(t => `${t}: ${geomCounts[t]}`).join(', ');
+    warnings.add(
+      `Mixed geometry types detected (${detail}). Only ${type} features will be processed; others are skipped.`
+    );
+  }
+  if (geomCounts['null']) {
+    warnings.add(`${geomCounts['null']} feature(s) have no geometry and will be skipped.`);
   }
 
   const safeColumns = config.columns || [];

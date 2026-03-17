@@ -14,7 +14,7 @@ npm test         # Run tests via vitest
 ```
 App.tsx                    # Slim orchestrator — hooks + conditional views + quick demo
 hooks/
-  useLayerManager.ts       # Layer CRUD, CSV temp state, data loading, addLayerDirect
+  useLayerManager.ts       # Layer CRUD, CSV temp state, data loading, addLayerDirect, config restore
   useProcessing.ts         # Web Worker processing pipeline, progress, results, warnings
   useExport.ts             # CSV and GeoJSON download
 views/
@@ -63,7 +63,7 @@ docs/
 
 ### Hooks Own State
 App.tsx is a thin orchestrator. All state lives in custom hooks:
-- `useLayerManager` — layers, editing state, CSV flow, `addLayerDirect` for quick demo
+- `useLayerManager` — layers, editing state, CSV flow, `addLayerDirect` for quick demo, `loadPendingConfigs` for config restore
 - `useProcessing` — Web Worker processing, progress, results, warnings, cancel
 - `useExport` — download functions
 

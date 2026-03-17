@@ -165,10 +165,18 @@ const MapSizer: React.FC = () => {
 };
 
 export const HexMap: React.FC<Props> = ({ hexData }) => {
+  // Scan all rows to find numeric columns (not just the first row)
   const numericCols = useMemo(() => {
     if (hexData.length === 0) return [];
-    const first = hexData[0];
-    return first ? getNumericColumns(first) : [];
+    const numericKeys = new Set<string>();
+    for (const row of hexData) {
+      for (const [k, v] of Object.entries(row)) {
+        if (k !== 'hexId' && typeof v === 'number' && Number.isFinite(v)) {
+          numericKeys.add(k);
+        }
+      }
+    }
+    return Array.from(numericKeys);
   }, [hexData]);
 
   const [colorColumn, setColorColumn] = useState<string | null>(null);

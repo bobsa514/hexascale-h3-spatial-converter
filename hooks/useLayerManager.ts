@@ -4,6 +4,14 @@ import { getGeoType } from '../utils/geoType';
 import { analyzeColumnsLocally } from '../services/columnInference';
 import { FeatureCollection } from 'geojson';
 import { v4 as uuidv4 } from 'uuid';
+import type { ProjectConfig } from '../utils/projectConfig';
+
+/** Saved layer config from a loaded project config file */
+interface PendingLayerConfig {
+  fileName: string;
+  geoType: string;
+  activeColumns: ColumnConfig[];
+}
 
 export function useLayerManager() {
   const [layers, setLayers] = useState<Layer[]>([]);
@@ -11,6 +19,8 @@ export function useLayerManager() {
   const [tempCsvData, setTempCsvData] = useState<{ data: any[]; name: string } | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+  // Pending layer configs from a loaded project file — matched to uploaded files by name
+  const [pendingConfigs, setPendingConfigs] = useState<PendingLayerConfig[]>([]);
 
   const handleDataLoaded = useCallback(async (data: any, name: string) => {
     setAnalyzing(true);
@@ -20,16 +30,27 @@ export function useLayerManager() {
       const type = getGeoType(data);
       const newLayerId = uuidv4();
 
-      let availableAttributes: string[] = [];
+      // Scan first N features for the union of all property keys
+      const SCAN_LIMIT = 50;
+      const attrSet = new Set<string>();
+      const featureCount = Math.min(data.features.length, SCAN_LIMIT);
+      for (let i = 0; i < featureCount; i++) {
+        const props = data.features[i]?.properties;
+        if (props) {
+          for (const key of Object.keys(props)) {
+            attrSet.add(key);
+          }
+        }
+      }
+      const availableAttributes = Array.from(attrSet);
+
       let aiSuggestions: Record<string, { type: ColumnType; aggregation: PointAggregation }> = {};
 
-      if (data.features.length > 0) {
-        const props = data.features[0].properties || {};
-        availableAttributes = Object.keys(props);
-
+      if (availableAttributes.length > 0) {
+        const sampleProps = data.features[0]?.properties || {};
         const rawCols = availableAttributes.map(key => ({
           name: key,
-          sample: props[key],
+          sample: sampleProps[key],
         }));
 
         const suggestions = await analyzeColumnsLocally(rawCols, type);
@@ -46,18 +67,33 @@ export function useLayerManager() {
         aiSuggestions = suggestionMap;
       }
 
+      // Check for a matching pending config (from a loaded project file)
+      let restoredColumns: ColumnConfig[] = [];
+      setPendingConfigs(prev => {
+        const matchIdx = prev.findIndex(pc => pc.fileName === name);
+        if (matchIdx >= 0) {
+          restoredColumns = prev[matchIdx]!.activeColumns;
+          // Remove matched config
+          return prev.filter((_, i) => i !== matchIdx);
+        }
+        return prev;
+      });
+
       const newLayer: Layer = {
         id: newLayerId,
         fileName: name,
         data,
         geoType: type,
         availableAttributes,
-        activeColumns: [],
+        activeColumns: restoredColumns,
         aiSuggestions,
       };
 
       setLayers(prev => [...prev, newLayer]);
-      setEditingLayerId(newLayerId);
+      // Only open config modal if no columns were restored from config
+      if (restoredColumns.length === 0) {
+        setEditingLayerId(newLayerId);
+      }
     } catch (e: any) {
       setAnalyzeError('Error loading file: ' + e.message);
     } finally {
@@ -145,6 +181,16 @@ export function useLayerManager() {
     setTempCsvData(null);
     setEditingLayerId(null);
     setAnalyzeError(null);
+    setPendingConfigs([]);
+  }, []);
+
+  /** Load layer configs from a project config file — they'll auto-apply when matching files are uploaded */
+  const loadPendingConfigs = useCallback((config: ProjectConfig) => {
+    setPendingConfigs(config.layers.map(l => ({
+      fileName: l.fileName,
+      geoType: l.geoType,
+      activeColumns: l.activeColumns,
+    })));
   }, []);
 
   return {
@@ -156,6 +202,7 @@ export function useLayerManager() {
     analyzing,
     analyzeError,
     setAnalyzeError,
+    pendingConfigs,
     handleDataLoaded,
     handleCsvLoaded,
     handleCsvMapped,
@@ -163,5 +210,6 @@ export function useLayerManager() {
     updateLayer,
     addLayerDirect,
     clearAll,
+    loadPendingConfigs,
   };
 }
