@@ -12,6 +12,36 @@ export interface ProcessingResult {
   warnings: ProcessingWarnings;
 }
 
+type BBox = [number, number, number, number];
+
+const toBoundaryBBox = (boundary: number[][]): BBox | null => {
+  if (!boundary.length) return null;
+
+  let minLng = Infinity;
+  let minLat = Infinity;
+  let maxLng = -Infinity;
+  let maxLat = -Infinity;
+
+  for (const point of boundary) {
+    const lng = point[0];
+    const lat = point[1];
+    if (lng === undefined || lat === undefined) continue;
+    if (lng < minLng) minLng = lng;
+    if (lat < minLat) minLat = lat;
+    if (lng > maxLng) maxLng = lng;
+    if (lat > maxLat) maxLat = lat;
+  }
+
+  if (!Number.isFinite(minLng) || !Number.isFinite(minLat) || !Number.isFinite(maxLng) || !Number.isFinite(maxLat)) {
+    return null;
+  }
+
+  return [minLng, minLat, maxLng, maxLat];
+};
+
+const bboxesOverlap = (a: BBox, b: BBox): boolean =>
+  a[0] <= b[2] && a[2] >= b[0] && a[1] <= b[3] && a[3] >= b[1];
+
 // --- Ring Aggregation (Spatial Smoothing) ---
 
 const applyRingAggregation = (
@@ -153,11 +183,19 @@ const processPolygons = (
             .flatten(feature as any)
             .features.filter((f: any) => f?.geometry?.type === 'Polygon')
         : [];
+    const polygonBBox = canUsePreciseWeight
+        ? turf.bbox(feature as any) as BBox
+        : null;
 
     if (canUsePreciseWeight) {
         uniqueCells.forEach((cellId) => {
             const boundary = h3.cellToBoundary(cellId, true);
             if (!boundary || boundary.length < 3) {
+                preciseShareByCell.set(cellId, 0);
+                return;
+            }
+            const boundaryBBox = toBoundaryBBox(boundary);
+            if (!boundaryBBox || !polygonBBox || !bboxesOverlap(boundaryBBox, polygonBBox)) {
                 preciseShareByCell.set(cellId, 0);
                 return;
             }
