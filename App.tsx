@@ -15,13 +15,15 @@ import type { FeatureCollection } from 'geojson';
 import type { AreaInterpolationMode } from './types';
 import sampleData from './assets/sample-data.json';
 
+import { AboutView } from './views/AboutView';
+
 // Lazy-load ResultsView (includes HexMap + Leaflet) — only needed after processing
 const ResultsView = React.lazy(() =>
   import('./views/ResultsView').then(m => ({ default: m.ResultsView }))
 );
 
 const App: React.FC = () => {
-  const [view, setView] = useState<'setup' | 'results'>('setup');
+  const [view, setView] = useState<'setup' | 'results' | 'about'>('setup');
   const [h3Resolution, setH3Resolution] = useState(DEFAULT_H3_RESOLUTION);
   const configInputRef = useRef<HTMLInputElement>(null);
 
@@ -120,12 +122,39 @@ const App: React.FC = () => {
       {/* Navbar */}
       <header className="border-b border-gray-800 bg-gray-900/50 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center space-x-3 cursor-pointer" onClick={startOver}>
-            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center shadow-lg shadow-blue-500/20">
-              <MapIcon className="w-5 h-5 text-white" />
+          <div className="flex items-center gap-8">
+            {/* Logo */}
+            <div className="flex items-center space-x-3 cursor-pointer" onClick={startOver}>
+              <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center shadow-lg shadow-blue-500/20">
+                <MapIcon className="w-5 h-5 text-white" />
+              </div>
+              <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">HexaScale</h1>
             </div>
-            <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">HexaScale</h1>
+            {/* Nav links */}
+            <nav className="flex items-center gap-6">
+              <button
+                onClick={() => setView(status === 'completed' ? 'results' : 'setup')}
+                className={`text-sm font-medium pb-0.5 transition-colors ${
+                  view !== 'about'
+                    ? 'text-blue-400 border-b-2 border-blue-400'
+                    : 'text-gray-400 hover:text-gray-300 border-b-2 border-transparent'
+                }`}
+              >
+                H3-fy
+              </button>
+              <button
+                onClick={() => setView('about')}
+                className={`text-sm font-medium pb-0.5 transition-colors ${
+                  view === 'about'
+                    ? 'text-blue-400 border-b-2 border-blue-400'
+                    : 'text-gray-400 hover:text-gray-300 border-b-2 border-transparent'
+                }`}
+              >
+                About
+              </button>
+            </nav>
           </div>
+          {/* Processing status */}
           {status !== 'idle' && status !== 'completed' && (
             <div className="flex items-center space-x-2 bg-blue-900/20 px-4 py-1.5 rounded-full border border-blue-900/50">
               <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
@@ -186,6 +215,9 @@ const App: React.FC = () => {
               onStartOver={startOver}
             />
           </Suspense>
+        )}
+        {view === 'about' && (
+          <AboutView onNavigateToApp={() => setView('setup')} />
         )}
       </main>
 
