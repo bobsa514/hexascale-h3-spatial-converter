@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-03-19 — UI Redesign & Bug Fixes
+
+### Added
+- **About page** — New full-page view explaining H3, methodology (intensive/extensive/categorical), privacy (all browser-side), open source status, and author info. Accessible via "About" nav link.
+- **Navbar navigation** — Top banner now has "H3-fy" (main app) and "About" tabs with active state indicators.
+
+### Changed
+- **LayerConfigModal redesign** — Compact horizontal 3-column layout (Source | Output | Type) replaces the old 2x2 grid. Source column is now a dropdown (changeable after adding). Help text moved to (i) tooltip. Ring aggregation uses pill-style toggle switches. Delete button always visible.
+
+### Fixed
+- **Shapefile parsing in Web Worker** — `.zip` shapefile uploads failed with "nodebuffer is not supported" because shpjs internally uses `JSZip.async('nodebuffer')` which only works in Node.js. Fix: bypass shpjs's unzip and call `parseShp`/`parseDbf`/`combine` directly with browser-safe `arraybuffer` extraction.
+
+---
+
 ## 2026-03-17 — Correctness & Method Alignment
 
 ### Fixed

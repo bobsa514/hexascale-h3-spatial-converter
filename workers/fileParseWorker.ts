@@ -1,5 +1,5 @@
 import Papa from 'papaparse';
-import shp from 'shpjs';
+import { parseShp, parseDbf, combine } from 'shpjs';
 import { kml } from '@tmcw/togeojson';
 import JSZip from 'jszip';
 import { FeatureCollection } from 'geojson';
@@ -43,22 +43,53 @@ const parseCsv = async (file: File): Promise<any[]> => {
 };
 
 const parseGeoJsonZip = async (file: File): Promise<FeatureCollection> => {
+  // shpjs's parseZip internally uses JSZip .async('nodebuffer') which fails in
+  // Web Workers. We unzip manually with 'arraybuffer' (browser-safe) and call
+  // shpjs's parseShp/parseDbf/combine directly.
   const buffer = await file.arrayBuffer();
-  const geojson = await shp(buffer);
+  const zip = await JSZip.loadAsync(buffer);
+  const files = zip.file(/.+/);
 
-  let finalFC: FeatureCollection = { type: 'FeatureCollection', features: [] };
+  // Extract all files using arraybuffer (browser-safe) or text
+  const extracted: Record<string, ArrayBuffer | string> = {};
+  await Promise.all(files.map(async (entry) => {
+    const ext = entry.name.slice(-3).toLowerCase();
+    if (ext === 'shp' || ext === 'dbf') {
+      extracted[entry.name] = await entry.async('arraybuffer');
+    } else {
+      extracted[entry.name] = await entry.async('text');
+    }
+  }));
 
-  if (Array.isArray(geojson)) {
-    geojson.forEach(g => {
-      if (g.type === 'FeatureCollection') {
-        finalFC.features.push(...g.features);
-      }
-    });
-  } else {
-    finalFC = geojson;
+  // Find .shp layers (same logic as shpjs parseZip)
+  const layerNames: string[] = [];
+  for (const key of Object.keys(extracted)) {
+    if (key.indexOf('__MACOSX') !== -1) continue;
+    if (key.slice(-4).toLowerCase() === '.shp') {
+      layerNames.push(key.slice(0, -4));
+    }
   }
 
-  return finalFC;
+  if (layerNames.length === 0) {
+    throw new Error('No .shp file found in zip archive.');
+  }
+
+  const allFeatures: any[] = [];
+
+  for (const name of layerNames) {
+    const shpData = extracted[name + '.shp'] || extracted[name + '.SHP'];
+    const dbfData = extracted[name + '.dbf'] || extracted[name + '.DBF'];
+    const prjData = extracted[name + '.prj'] || extracted[name + '.PRJ'];
+
+    if (!shpData) continue;
+
+    const geometries = parseShp(shpData as ArrayBuffer, prjData as string | undefined);
+    const properties = dbfData ? parseDbf(dbfData as ArrayBuffer) : [];
+    const fc = combine([geometries, properties]);
+    allFeatures.push(...fc.features);
+  }
+
+  return { type: 'FeatureCollection', features: allFeatures };
 };
 
 const parseKmlString = (xmlString: string) => {
